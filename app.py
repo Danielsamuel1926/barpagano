@@ -40,17 +40,11 @@ def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
-    try:
-        return pd.read_csv(DB_FILE).to_dict('records')
-    except:
-        return []
+    try: return pd.read_csv(DB_FILE).to_dict('records')
+    except: return []
 
 def salva_ordini(lista):
-    # CORREZIONE ERRORE: Gestione corretta della creazione DataFrame
-    if lista:
-        df = pd.DataFrame(lista)
-    else:
-        df = pd.DataFrame(columns=COLONNE)
+    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=COLONNE)
     df.to_csv(DB_FILE, index=False)
 
 def carica_stock():
@@ -80,26 +74,40 @@ if ruolo == "banco":
     with tab1:
         ordini = carica_ordini()
         if ordini and any(o['stato'] == "NO" for o in ordini): suona_notifica()
-        if not ordini: st.info("In attesa ordini...")
+        
+        if not ordini: 
+            st.info("Nessun tavolo attivo al momento.")
         else:
-            tavoli = sorted(set(str(o['tavolo']) for o in ordini), key=lambda x: int(x) if x.isdigit() else 0)
+            # Filtriamo i tavoli unici presenti negli ordini
+            tavoli_attivi = sorted(set(str(o['tavolo']) for o in ordini), key=lambda x: int(x) if x.isdigit() else 0)
+            
             cols = st.columns(3)
-            for idx, t in enumerate(tavoli):
+            for idx, t in enumerate(tavoli_attivi):
                 with cols[idx % 3]:
                     with st.container(border=True):
                         st.subheader(f"🪑 Tavolo {t}")
+                        tot_tavolo = 0
+                        # Mostra i prodotti di questo specifico tavolo
                         for i, r in enumerate(ordini):
                             if str(r['tavolo']) == str(t):
                                 cl = "servito" if r['stato'] == "SI" else "da-servire"
                                 c_t, c_b = st.columns([3, 1])
                                 c_t.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
+                                tot_tavolo += float(r['prezzo'])
+                                
                                 if r['stato'] == "NO" and c_b.button("Fatto", key=f"sv_{t}_{i}"):
                                     ordini[i]['stato'] = "SI"
                                     salva_ordini(ordini)
                                     st.rerun()
-                        tot = sum(float(o['prezzo']) for o in ordini if str(o['tavolo']) == str(t))
-                        if st.button(f"PAGATO €{tot:.2f}", key=f"pay_{t}", type="primary"):
-                            salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)])
+                        
+                        st.divider()
+                        # LOGICA CANCELLAZIONE TAVOLO
+                        if st.button(f"PAGATO €{tot_tavolo:.2f}", key=f"pay_{t}", type="primary", use_container_width=True):
+                            # Crea una nuova lista escludendo TUTTI gli ordini del tavolo che ha pagato
+                            nuovi_ordini = [o for o in ordini if str(o['tavolo']) != str(t)]
+                            salva_ordini(nuovi_ordini)
+                            st.success(f"Tavolo {t} liberato!")
+                            time.sleep(1)
                             st.rerun()
 
     with tab2:
@@ -127,7 +135,7 @@ if ruolo == "banco":
     time.sleep(15); st.rerun()
 
 else:
-    # --- CLIENTE ---
+    # --- CLIENTE (Selezione Tavolo e Menù) ---
     st.title("☕ BAR PAGANO")
     if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
@@ -155,32 +163,40 @@ else:
             qta = dispo.get(nome, 999) if cat_scelta == CAT_STOCK else 999
             with p_cols[idx % 2]:
                 if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=(cat_scelta==CAT_STOCK and qta<=0), use_container_width=True):
-                    st.session_state.carrello.append({"tavolo": st.session_state.tavolo_scelto, "prodotto": nome, "prezzo": prezzo})
+                    st.session_state.carrello.append({
+                        "temp_id": time.time() + idx,
+                        "tavolo": st.session_state.tavolo_scelto, 
+                        "prodotto": nome, 
+                        "prezzo": prezzo
+                    })
                     st.toast(f"Aggiunto: {nome}")
                 if cat_scelta == CAT_STOCK: st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
         if st.session_state.carrello:
             st.divider()
-            st.write("🛒 **RIEPILOGO ORDINE**")
+            st.write("🛒 **IL TUO ORDINE**")
             tot_ordine = 0
             for i, item in enumerate(st.session_state.carrello):
-                st.write(f"- {item['prodotto']} (€{item['prezzo']:.2f})")
+                col_prod, col_del = st.columns([5, 1])
+                col_prod.write(f"**{item['prodotto']}** (€{item['prezzo']:.2f})")
+                if col_del.button("❌", key=f"del_{item['temp_id']}"):
+                    st.session_state.carrello.pop(i)
+                    st.rerun()
                 tot_ordine += item['prezzo']
             
-            if st.button(f"🚀 INVIA ORDINE (€{tot_ordine:.2f})", type="primary", use_container_width=True):
+            st.write(f"### TOTALE: €{tot_ordine:.2f}")
+            if st.button("🚀 INVIA ORDINE AL BANCONE", type="primary", use_container_width=True):
                 ordini_db = carica_ordini()
                 for item in st.session_state.carrello:
                     item.update({
-                        "nota": "", 
-                        "orario": datetime.now().strftime("%H:%M"), 
-                        "stato": "NO", 
+                        "nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO", 
                         "id_univoco": str(time.time()) + item['prodotto']
                     })
+                    if "temp_id" in item: del item["temp_id"]
                     ordini_db.append(item)
                     aggiorna_stock_veloce(item['prodotto'], -1)
                 salva_ordini(ordini_db)
                 st.session_state.carrello = []
-                st.success("Ordine inviato con successo!")
+                st.success("Ordine inviato!")
                 time.sleep(2)
                 st.rerun()
-
