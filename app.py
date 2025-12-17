@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import time
+import base64
 from datetime import datetime
 
 # --- CONFIGURAZIONE PAGINA ---
@@ -16,7 +17,6 @@ st.markdown("""
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .product-info { font-size: 13px; color: #BBBBBB; text-align: center; margin-bottom: 10px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-    /* Stile per i tasti +/- */
     .qty-text { font-size: 20px; font-weight: bold; text-align: center; padding-top: 5px; }
     </style>
     """, unsafe_allow_html=True)
@@ -31,6 +31,16 @@ MENU_DATA = {
     "Bevande Calde": {"Caffè": 1.00, "Caffè Macchiato": 1.10, "Cappuccino": 1.50, "Tè caldo": 1.50},
     "Bevande Fredde": {"Acqua 0.5L": 1.00, "Coca Cola": 2.50, "Aranciata": 2.50, "Birra": 3.00}
 }
+
+# --- FUNZIONE AUDIO NOTIFICA ---
+def suona_notifica():
+    # Suono di notifica standard (Short Ping)
+    audio_html = """
+        <audio autoplay>
+            <source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Notification-Streamlit/main/notification.mp3" type="audio/mp3">
+        </audio>
+    """
+    st.markdown(audio_html, unsafe_allow_html=True)
 
 # --- FUNZIONI DATI ---
 def carica_ordini():
@@ -57,20 +67,6 @@ def aggiorna_stock_veloce(nome, var):
         df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
         df.to_csv(STOCK_FILE, index=False)
 
-# --- COMPONENTE INTERFACCIA STOCK +/- ---
-def interfaccia_stock_pulsanti(stk_dict, prefix=""):
-    for prod in MENU_DATA[CAT_STOCK]:
-        attuale = stk_dict.get(prod, 0)
-        c_name, c_minus, c_val, c_plus = st.columns([3, 1, 1, 1])
-        c_name.write(f"**{prod}**")
-        if c_minus.button("➖", key=f"{prefix}m_{prod}"):
-            aggiorna_stock_veloce(prod, -1)
-            st.rerun()
-        c_val.markdown(f"<div class='qty-text'>{attuale}</div>", unsafe_allow_html=True)
-        if c_plus.button("➕", key=f"{prefix}p_{prod}"):
-            aggiorna_stock_veloce(prod, 1)
-            st.rerun()
-
 # --- LOGICA RUOLI ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 
@@ -80,6 +76,10 @@ if ruolo == "banco":
     
     with tab1:
         ordini = carica_ordini()
+        # Se ci sono ordini non serviti ("NO"), suona la notifica
+        if ordini and any(o['stato'] == "NO" for o in ordini):
+            suona_notifica()
+
         if not ordini: st.info("In attesa ordini...")
         else:
             df_o = pd.DataFrame(ordini)
@@ -95,7 +95,7 @@ if ruolo == "banco":
                                 col_t, col_b = st.columns([3, 1])
                                 col_t.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
                                 if r['stato'] == "NO":
-                                    if col_b.button("Fatto", key=f"sv_{t}_{i}"):
+                                    if col_b.button("Servi", key=f"sv_{t}_{i}"):
                                         ordini[i]['stato'] = "SI"
                                         salva_ordini(ordini)
                                         st.rerun()
@@ -120,24 +120,28 @@ if ruolo == "banco":
 
     with tab3:
         st.write("### 📦 Carico Magazzino (+/-)")
-        interfaccia_stock_pulsanti(carica_stock(), "banco_tab_")
+        stk_dict = carica_stock()
+        for prod in MENU_DATA[CAT_STOCK]:
+            attuale = stk_dict.get(prod, 0)
+            c_name, c_minus, c_val, c_plus = st.columns([3, 1, 1, 1])
+            c_name.write(f"**{prod}**")
+            if c_minus.button("➖", key=f"bm_{prod}"):
+                aggiorna_stock_veloce(prod, -1)
+                st.rerun()
+            c_val.markdown(f"<div class='qty-text'>{attuale}</div>", unsafe_allow_html=True)
+            if c_plus.button("➕", key=f"bp_{prod}"):
+                aggiorna_stock_veloce(prod, 1)
+                st.rerun()
     
     time.sleep(15)
     st.rerun()
 
 else:
-    # --- CLIENTE / PAGINA INIZIALE ---
+    # --- CLIENTE / PAGINA INIZIALE (PULITA) ---
     st.title("☕ BAR PAGANO")
     
     if st.session_state.get('tavolo_scelto') is None:
-        if st.button("🔄 AGGIORNA DISPLAY", use_container_width=True):
-            st.rerun()
-        
-        with st.expander("📦 AGGIORNA STOCK BRIOCHE"):
-            interfaccia_stock_pulsanti(carica_stock(), "home_")
-        
-        st.divider()
-        st.write("### 🪑 Seleziona il tuo tavolo:")
+        st.write("### 🪑 Seleziona il tuo tavolo per ordinare:")
         t_cols = st.columns(4)
         for i in range(1, 21):
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
@@ -180,6 +184,6 @@ else:
                     aggiorna_stock_veloce(item['prodotto'], -1)
                 salva_ordini(ord_at)
                 st.session_state.carrello = []
-                st.success("Inviato!")
+                st.success("Ordine Inviato!")
                 time.sleep(1)
                 st.rerun()
