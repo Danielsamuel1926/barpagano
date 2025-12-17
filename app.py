@@ -26,17 +26,53 @@ MENU_FILE = "menu_personalizzato.csv"
 COLONNE_ORDINI = ["id_univoco", "tavolo", "prodotto", "prezzo", "nota", "orario", "stato"]
 CAT_STOCK = "Brioche e Cornetti"
 
-# --- FUNZIONI DI GESTIONE LISTINO (MENU) ---
+# --- FUNZIONI DI CARICAMENTO "BLINDATE" ---
+
 def carica_menu():
+    intestazioni = ["categoria", "prodotto", "prezzo"]
     if not os.path.exists(MENU_FILE) or os.stat(MENU_FILE).st_size == 0:
-        # Crea un menù base se il file non esiste
         default_menu = [
             {"categoria": "Brioche e Cornetti", "prodotto": "Cornetto cioccolato", "prezzo": 1.50},
             {"categoria": "Bevande Calde", "prodotto": "Caffè", "prezzo": 1.00},
             {"categoria": "Bevande Fredde", "prodotto": "Acqua 0.5L", "prezzo": 1.00}
         ]
         pd.DataFrame(default_menu).to_csv(MENU_FILE, index=False)
-    return pd.read_csv(MENU_FILE)
+        return pd.DataFrame(default_menu)
+    try:
+        return pd.read_csv(MENU_FILE)
+    except Exception:
+        pd.DataFrame(columns=intestazioni).to_csv(MENU_FILE, index=False)
+        return pd.DataFrame(columns=intestazioni)
+
+def carica_ordini():
+    if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
+        pd.DataFrame(columns=COLONNE_ORDINI).to_csv(DB_FILE, index=False)
+        return []
+    try:
+        df = pd.read_csv(DB_FILE)
+        return df.to_dict('records')
+    except Exception:
+        pd.DataFrame(columns=COLONNE_ORDINI).to_csv(DB_FILE, index=False)
+        return []
+
+def carica_stock():
+    menu = carica_menu()
+    prod_brioche = menu[menu['categoria'] == CAT_STOCK]['prodotto'].tolist()
+    if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
+        data = [{"prodotto": p, "quantita": 0} for p in prod_brioche]
+        pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
+        return {p: 0 for p in prod_brioche}
+    try:
+        df = pd.read_csv(STOCK_FILE)
+        return df.set_index('prodotto')['quantita'].to_dict()
+    except Exception:
+        return {p: 0 for p in prod_brioche}
+
+# --- FUNZIONI DI SALVATAGGIO ---
+
+def salva_ordini(lista):
+    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=COLONNE_ORDINI)
+    df.to_csv(DB_FILE, index=False)
 
 def salva_nuovo_prodotto(cat, nome, prezzo):
     df = carica_menu()
@@ -49,31 +85,13 @@ def elimina_prodotto_menu(nome):
     df = df[df['prodotto'] != nome]
     df.to_csv(MENU_FILE, index=False)
 
-# --- FUNZIONI ORDINI E STOCK ---
-def carica_ordini():
-    if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
-        pd.DataFrame(columns=COLONNE_ORDINI).to_csv(DB_FILE, index=False)
-        return []
-    return pd.read_csv(DB_FILE).to_dict('records')
-
-def salva_ordini(lista):
-    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=COLONNE_ORDINI)
-    df.to_csv(DB_FILE, index=False)
-
-def carica_stock():
-    menu = carica_menu()
-    prod_brioche = menu[menu['categoria'] == CAT_STOCK]['prodotto'].tolist()
-    if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
-        data = [{"prodotto": p, "quantita": 0} for p in prod_brioche]
-        pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
-    return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
-
 def aggiorna_stock_veloce(nome, var):
-    df = pd.read_csv(STOCK_FILE)
-    if nome in df['prodotto'].values:
-        idx = df[df['prodotto'] == nome].index[0]
-        df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
-        df.to_csv(STOCK_FILE, index=False)
+    if os.path.exists(STOCK_FILE):
+        df = pd.read_csv(STOCK_FILE)
+        if nome in df['prodotto'].values:
+            idx = df[df['prodotto'] == nome].index[0]
+            df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
+            df.to_csv(STOCK_FILE, index=False)
 
 # --- LOGICA APPLICAZIONE ---
 ruolo = st.query_params.get("ruolo", "tavolo")
@@ -81,8 +99,6 @@ menu_df = carica_menu()
 
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
-    
-    # PULSANTE AGGIORNA
     if st.button("🔄 AGGIORNA DISPLAY", use_container_width=True, type="secondary"):
         st.rerun()
 
@@ -120,8 +136,7 @@ if ruolo == "banco":
             prods = menu_df[menu_df['categoria'] == cat]
             cols_v = st.columns(4)
             for i, (idx_r, r) in enumerate(prods.iterrows()):
-                label = f"{r['prodotto']}"
-                if cols_v[i % 4].button(label, key=f"bs_{r['prodotto']}"):
+                if cols_v[i % 4].button(f"{r['prodotto']}", key=f"bs_{r['prodotto']}"):
                     if cat == CAT_STOCK: aggiorna_stock_veloce(r['prodotto'], -1)
                     st.rerun()
 
@@ -137,24 +152,19 @@ if ruolo == "banco":
 
     with tab4:
         st.subheader("⚙️ Modifica Listino Prezzi")
-        # FORM AGGIUNTA
         with st.form("aggiunta_prodotto"):
             c1, c2, c3 = st.columns([2, 2, 1])
             cat_n = c1.selectbox("Categoria", ["Brioche e Cornetti", "Bevande Calde", "Bevande Fredde", "Altro"])
             nom_n = c2.text_input("Nome Prodotto")
             pre_n = c3.number_input("Prezzo €", min_value=0.0, step=0.1)
-            if st.form_submit_button("AGGIUNGI PRODOTTO"):
+            if st.form_submit_button("AGGIORNA LISTINO"):
                 if nom_n:
                     salva_nuovo_prodotto(cat_n, nom_n, pre_n)
                     st.success("Aggiunto!"); st.rerun()
-        
         st.divider()
-        # ELIMINAZIONE
-        st.subheader("🗑️ Rimuovi Prodotto")
         da_canc = st.selectbox("Seleziona prodotto da cancellare", menu_df['prodotto'].tolist())
-        if st.button("ELIMINA ORA", type="primary"):
-            elimina_prodotto_menu(da_canc)
-            st.warning("Eliminato!"); st.rerun()
+        if st.button("ELIMINA PRODOTTO", type="primary"):
+            elimina_prodotto_menu(da_canc); st.rerun()
 
 else:
     # --- CLIENTE ---
@@ -173,37 +183,45 @@ else:
         if st.button("🔄 Cambia Tavolo"): st.session_state.tavolo_scelto = None; st.rerun()
         
         st.divider()
-        scelta_cat = st.radio("Scegli:", menu_df['categoria'].unique(), horizontal=True)
-        
-        stk = carica_stock()
-        prod_filtrati = menu_df[menu_df['categoria'] == scelta_cat]
-        p_cols = st.columns(2)
-        
-        for idx, (idx_r, r) in enumerate(prod_filtrati.iterrows()):
-            qta = stk.get(r['prodotto'], 999) if scelta_cat == CAT_STOCK else 999
-            with p_cols[idx % 2]:
-                if st.button(f"➕ {r['prodotto']}\n€{r['prezzo']:.2f}", key=f"c_{r['prodotto']}", disabled=(qta<=0), use_container_width=True):
-                    st.session_state.carrello.append({"prodotto": r['prodotto'], "prezzo": r['prezzo'], "id": time.time()})
-                    st.toast(f"Aggiunto!")
-                if scelta_cat == CAT_STOCK: st.caption(f"Disponibili: {qta}")
+        categorie = menu_df['categoria'].unique()
+        if len(categorie) > 0:
+            scelta_cat = st.radio("Scegli:", categorie, horizontal=True)
+            stk = carica_stock()
+            prod_filtrati = menu_df[menu_df['categoria'] == scelta_cat]
+            p_cols = st.columns(2)
+            for idx, (idx_r, r) in enumerate(prod_filtrati.iterrows()):
+                qta = stk.get(r['prodotto'], 999) if scelta_cat == CAT_STOCK else 999
+                with p_cols[idx % 2]:
+                    if st.button(f"➕ {r['prodotto']}\n€{r['prezzo']:.2f}", key=f"c_{r['prodotto']}", disabled=(qta<=0), use_container_width=True):
+                        st.session_state.carrello.append({"prodotto": r['prodotto'], "prezzo": r['prezzo'], "id": time.time()})
+                        st.toast("Aggiunto!")
+                    if scelta_cat == CAT_STOCK: st.caption(f"Disponibili: {qta}")
+        else:
+            st.warning("Menù in fase di aggiornamento...")
 
         if st.session_state.carrello:
             st.divider()
-            st.write("🛒 **RIEPILOGO**")
-            tot = 0
+            st.write("🛒 **IL TUO ORDINE**")
+            tot = sum(item['prezzo'] for item in st.session_state.carrello)
             for i, item in enumerate(st.session_state.carrello):
                 c1, c2 = st.columns([5, 1])
                 c1.write(f"{item['prodotto']} (€{item['prezzo']:.2f})")
                 if c2.button("❌", key=f"del_{item['id']}"):
                     st.session_state.carrello.pop(i); st.rerun()
-                tot += item['prezzo']
             
             if st.button(f"🚀 INVIA ORDINE €{tot:.2f}", type="primary", use_container_width=True):
                 ord_db = carica_ordini()
                 for item in st.session_state.carrello:
-                    item.update({"tavolo": st.session_state.tavolo_scelto, "stato": "NO", "orario": datetime.now().strftime("%H:%M"), "id_univoco": str(time.time())+item['prodotto']})
-                    if "id" in item: del item["id"]
-                    ord_db.append(item)
-                    if scelta_cat == CAT_STOCK: aggiorna_stock_veloce(item['prodotto'], -1)
+                    nuovo_ordine = {
+                        "tavolo": st.session_state.tavolo_scelto,
+                        "prodotto": item['prodotto'],
+                        "prezzo": item['prezzo'],
+                        "nota": "",
+                        "orario": datetime.now().strftime("%H:%M"),
+                        "stato": "NO",
+                        "id_univoco": str(time.time()) + item['prodotto']
+                    }
+                    ord_db.append(nuovo_ordine)
+                    aggiorna_stock_veloce(item['prodotto'], -1)
                 salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
 
