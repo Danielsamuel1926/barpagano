@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import os
 import time
-import base64
 from datetime import datetime
 
 # --- CONFIGURAZIONE PAGINA ---
@@ -18,6 +17,8 @@ st.markdown("""
     .product-info { font-size: 13px; color: #BBBBBB; text-align: center; margin-bottom: 10px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
     .qty-text { font-size: 20px; font-weight: bold; text-align: center; padding-top: 5px; }
+    /* Colore verde per il tasto aggiorna bancone */
+    .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -34,7 +35,6 @@ MENU_DATA = {
 
 # --- FUNZIONE AUDIO NOTIFICA ---
 def suona_notifica():
-    # Suono di notifica standard (Short Ping)
     audio_html = """
         <audio autoplay>
             <source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Notification-Streamlit/main/notification.mp3" type="audio/mp3">
@@ -72,11 +72,15 @@ ruolo = st.query_params.get("ruolo", "tavolo")
 
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
+    
+    # TASTO AGGIORNA GENERALE BANCONE
+    if st.button("🔄 AGGIORNA DISPLAY E ORDINI", use_container_width=True, type="secondary"):
+        st.rerun()
+
     tab1, tab2, tab3 = st.tabs(["📋 ORDINI TAVOLI", "⚡ BANCOSERVITO", "📦 STOCK BRIOCHE"])
     
     with tab1:
         ordini = carica_ordini()
-        # Se ci sono ordini non serviti ("NO"), suona la notifica
         if ordini and any(o['stato'] == "NO" for o in ordini):
             suona_notifica()
 
@@ -107,7 +111,7 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida")
+        st.write("### ⚡ Vendita Rapida Bancone")
         dispo = carica_stock()
         for cat, prodotti in MENU_DATA.items():
             st.markdown(f"#### {cat}")
@@ -137,18 +141,16 @@ if ruolo == "banco":
     st.rerun()
 
 else:
-    # --- CLIENTE / PAGINA INIZIALE (PULITA) ---
+    # --- CLIENTE ---
     st.title("☕ BAR PAGANO")
-    
     if st.session_state.get('tavolo_scelto') is None:
-        st.write("### 🪑 Seleziona il tuo tavolo per ordinare:")
+        st.write("### 🪑 Seleziona il tuo tavolo:")
         t_cols = st.columns(4)
         for i in range(1, 21):
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
                 st.session_state.tavolo_scelto = str(i)
                 st.rerun()
     else:
-        # --- MENU ORDINAZIONE ---
         col_t, col_b = st.columns([3, 1])
         col_t.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
         if col_b.button("🔄 Cambia"):
@@ -163,12 +165,10 @@ else:
         for idx, (nome, prezzo) in enumerate(MENU_DATA[cat_scelta].items()):
             qta = dispo.get(nome, 999) if cat_scelta == CAT_STOCK else 999
             disabled = (cat_scelta == CAT_STOCK and qta <= 0)
-            
             with p_cols[idx % 2]:
                 if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=disabled, use_container_width=True):
                     if 'carrello' not in st.session_state: st.session_state.carrello = []
                     st.session_state.carrello.append({"tavolo": st.session_state.tavolo_scelto, "prodotto": nome, "prezzo": prezzo})
-                
                 if cat_scelta == CAT_STOCK:
                     st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
@@ -184,6 +184,6 @@ else:
                     aggiorna_stock_veloce(item['prodotto'], -1)
                 salva_ordini(ord_at)
                 st.session_state.carrello = []
-                st.success("Ordine Inviato!")
+                st.success("Inviato!")
                 time.sleep(1)
                 st.rerun()
