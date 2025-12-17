@@ -100,7 +100,6 @@ if ruolo == "banco":
                     st.markdown(f"**Totale: € {prod_t['prezzo'].sum():.2f}**")
                     
                     if st.button(f"CHIUDI T{t}", key=f"pay_{t}", type="primary", use_container_width=True):
-                        # Filtriamo gli ordini eliminando quelli del tavolo corrente
                         nuovi_ordini = [o for o in ordini_attivi if str(o['tavolo']) != str(t)]
                         salva_lista_su_file(nuovi_ordini)
                         st.rerun()
@@ -168,8 +167,7 @@ else:
                         item['nota'] = nota
                         ordini_esistenti.append(item)
                     salva_lista_su_file(ordini_esistenti)
-                    st.success("Inviato!")
+                    st.success("Ordine inviato! ☕☕☕") # Qui la magia!
                     st.session_state.carrello = []
                     time.sleep(1)
                     st.rerun()
-
