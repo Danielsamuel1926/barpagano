@@ -16,8 +16,9 @@ st.markdown("""
         font-weight: bold !important;
         font-size: 20px !important;
     }
-    .product-text { font-size: 24px !important; font-weight: bold; }
-    .note-text { font-size: 18px !important; font-style: italic; opacity: 0.8; }
+    .product-text { font-size: 24px !important; font-weight: bold; margin-bottom: 0px; }
+    .price-text { font-size: 18px !important; font-weight: normal; opacity: 0.9; }
+    .note-text { font-size: 18px !important; font-style: italic; opacity: 0.8; color: #ff4b4b; }
     .stButton>button { border-radius: 10px; }
     .cart-item { 
         background-color: rgba(255, 75, 75, 0.1); 
@@ -56,7 +57,6 @@ if 'mostra_animazione' not in st.session_state: st.session_state.mostra_animazio
 
 # --- FUNZIONE ANIMAZIONE CAFFE ---
 def animazione_caffe():
-    # JavaScript per creare emoji che volano
     st.components.v1.html("""
         <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
         <script>
@@ -116,12 +116,19 @@ if ruolo == "banco":
                 with st.container(border=True):
                     prod_t = df[df['tavolo'] == str(t)]
                     st.subheader(f"🪑 Tavolo {t}")
+                    
                     for _, row in prod_t.iterrows():
-                        st.markdown(f"<p class='product-text'>• {row['prodotto']}</p>", unsafe_allow_html=True)
+                        # QUI ABBIAMO AGGIUNTO IL PREZZO ACCANTO AL PRODOTTO
+                        st.markdown(f"""
+                            <p class='product-text'>• {row['prodotto']} 
+                            <span class='price-text'>(€ {row['prezzo']:.2f})</span></p>
+                        """, unsafe_allow_html=True)
+                        
                         if str(row['nota']) != 'nan' and row['nota']:
-                            st.markdown(f"<p class='note-text'>({row['nota']})</p>", unsafe_allow_html=True)
+                            st.markdown(f"<p class='note-text'>&nbsp;&nbsp;Nota: {row['nota']}</p>", unsafe_allow_html=True)
+                    
                     st.divider()
-                    st.markdown(f"**Totale: € {prod_t['prezzo'].sum():.2f}**")
+                    st.markdown(f"### TOTALE: € {prod_t['prezzo'].sum():.2f}")
                     if st.button(f"CHIUDI T{t}", key=f"pay_{t}", type="primary", use_container_width=True):
                         nuovi_ordini = [o for o in ordini_attivi if str(o['tavolo']) != str(t)]
                         salva_lista_su_file(nuovi_ordini)
