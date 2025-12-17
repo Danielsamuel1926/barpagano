@@ -10,13 +10,10 @@ st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 # CSS PER TASTI TAVOLI AFFIANCATI E QUADRATI
 st.markdown("""
     <style>
-    /* Forza la griglia dei tavoli a 5 colonne su mobile e desktop */
     [data-testid="column"] {
         flex: 1 1 calc(20% - 10px) !important;
         min-width: 60px !important;
     }
-    
-    /* Rende i tasti dei tavoli quadrati e grandi */
     div[data-testid="column"] button {
         aspect-ratio: 1 / 1 !important;
         width: 100% !important;
@@ -24,11 +21,8 @@ st.markdown("""
         font-size: 22px !important;
         margin-bottom: 8px !important;
     }
-
     .product-text { font-size: 22px !important; font-weight: bold; }
     .stButton>button { border-radius: 12px; }
-    
-    /* Stile carrello */
     .cart-item { 
         background-color: rgba(255, 75, 75, 0.1); 
         padding: 8px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid #FF4B4B;
@@ -38,8 +32,9 @@ st.markdown("""
 
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
+COLONNE = ["tavolo", "prodotto", "prezzo", "nota", "orario"]
 
-# --- LISTINO PRODOTTI ---
+# --- LISTINO ---
 MENU_DATA = {
     "Brioche e Cornetti": {
         "Cornetto cioccolato": 1.50, "Cornetto crema": 1.50, "Cornetto miele": 1.50,
@@ -56,17 +51,31 @@ MENU_DATA = {
     }
 }
 
-# --- FUNZIONI DI GESTIONE FILE (SICURE) ---
-def inizializza_file():
+# --- FUNZIONI DI GESTIONE FILE (RIPARATE) ---
+def carica_ordini():
+    if not os.path.exists(DB_FILE):
+        pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
+        return []
+    try:
+        df = pd.read_csv(DB_FILE)
+        return df.to_dict('records')
+    except pd.errors.EmptyDataError:
+        # Se il file è vuoto, lo rigeneriamo con le colonne
+        pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
+        return []
+
+def salva_ordini(lista_ordini):
+    df = pd.DataFrame(lista_ordini) if lista_ordini else pd.DataFrame(columns=COLONNE)
+    df.to_csv(DB_FILE, index=False)
+
+def carica_stock():
     if not os.path.exists(STOCK_FILE):
         data = [{"prodotto": n, "quantita": 100} for c in MENU_DATA for n in MENU_DATA[c]]
         pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
-    if not os.path.exists(DB_FILE):
-        pd.DataFrame(columns=["tavolo", "prodotto", "prezzo", "nota", "orario"]).to_csv(DB_FILE, index=False)
-
-def carica_stock():
-    inizializza_file()
-    return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
+    try:
+        return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
+    except:
+        return {n: 100 for c in MENU_DATA for n in MENU_DATA[c]}
 
 def aggiorna_stock(nome, var):
     s = carica_stock()
@@ -74,27 +83,14 @@ def aggiorna_stock(nome, var):
         s[nome] = max(0, s[nome] + var)
         pd.DataFrame(list(s.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
 
-def carica_ordini():
-    inizializza_file()
-    df = pd.read_csv(DB_FILE)
-    return df.to_dict('records')
-
-def salva_ordini(lista_ordini):
-    # Questa funzione evita l'errore di sintassi precedente
-    if not lista_ordini:
-        df = pd.DataFrame(columns=["tavolo", "prodotto", "prezzo", "nota", "orario"])
-    else:
-        df = pd.DataFrame(lista_ordini)
-    df.to_csv(DB_FILE, index=False)
-
-# --- ANIMAZIONE CAFFE ---
+# --- ANIMAZIONE ---
 def animazione_caffe():
     st.components.v1.html("""
         <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
         <script>
         const container = document.getElementById('coffee-rain');
-        const emojis = ['☕', '🍵', '🍩', '🥐'];
-        for (let i = 0; i < 35; i++) {
+        const emojis = ['☕', '🍵', '🥐'];
+        for (let i = 0; i < 30; i++) {
             const el = document.createElement('div');
             el.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
             el.style.position = 'fixed'; el.style.bottom = '-50px';
@@ -110,7 +106,7 @@ def animazione_caffe():
         </script>
     """, height=0)
 
-# Inizializzazione Sessione
+# Session State
 if 'carrello' not in st.session_state: st.session_state.carrello = []
 if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
 if 'categoria_scelta' not in st.session_state: st.session_state.categoria_scelta = "Brioche e Cornetti"
@@ -118,7 +114,7 @@ if 'mostra_animazione' not in st.session_state: st.session_state.mostra_animazio
 
 ruolo = st.query_params.get("ruolo", "tavolo")
 
-# --- INTERFACCIA BANCONE ---
+# --- BANCONE ---
 if ruolo == "banco":
     st.title("🖥️ BANCONE")
     ordini = carica_ordini()
@@ -144,15 +140,13 @@ if ruolo == "banco":
     time.sleep(15)
     st.rerun()
 
-# --- INTERFACCIA CLIENTE ---
+# --- CLIENTE ---
 else:
     if st.session_state.mostra_animazione:
         animazione_caffe()
         st.session_state.mostra_animazione = False
 
     st.title("☕ BAR PAGANO")
-    
-    # SELEZIONE TAVOLI AFFIANCATI
     st.write("### 1. Seleziona il tuo Tavolo:")
     t_cols = st.columns(5)
     for i in range(1, 21):
@@ -166,8 +160,6 @@ else:
     if st.session_state.tavolo_scelto:
         st.divider()
         st.write(f"### 2. Menu Tavolo {st.session_state.tavolo_scelto}")
-        
-        # Categorie
         c_cols = st.columns(3)
         for i, cat in enumerate(MENU_DATA.keys()):
             if c_cols[i].button(cat, use_container_width=True, type="primary" if st.session_state.categoria_scelta==cat else "secondary"):
