@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="BAR PAGANO - Cassa", page_icon="💰", layout="wide")
+st.set_page_config(page_title="BAR PAGANO", page_icon="💰", layout="wide")
 
 DB_FILE = "ordini_bar_pagano.csv"
 
@@ -42,68 +42,75 @@ def salva_ordini(ordini):
 if 'ordini' not in st.session_state:
     st.session_state.ordini = carica_ordini()
 
-# --- LOGICA NAVIGAZIONE ---
+# --- NAVIGAZIONE ---
 query_params = st.query_params
 ruolo = query_params.get("ruolo", "tavolo")
 
 # --- INTERFACCIA BANCONE / CASSA ---
 if ruolo == "banco":
-    st.title("👨‍🍳 BANCONE & CASSA - BAR PAGANO")
+    st.title("🖥️ GESTIONE CASSA E TAVOLI - BAR PAGANO")
     
-    if st.session_state.ordini:
-        # Calcolo incasso totale potenziale (ordini non ancora chiusi)
-        totale_da_incassare = sum(float(o['prezzo']) for o in st.session_state.ordini)
-        st.sidebar.metric("Incasso Totale Ordini Attivi", f"€ {totale_da_incassare:.2f}")
-        
-        # Suono di notifica
-        st.components.v1.html("""<audio autoplay><source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg"></audio>""", height=0)
-
     if not st.session_state.ordini:
-        st.info("Nessun ordine attivo al momento.")
+        st.info("Nessun ordine attivo.")
     else:
-        for i, ordine in enumerate(st.session_state.ordini):
-            with st.container(border=True):
-                c1, c2, c3, c4 = st.columns([1, 3, 1, 1])
-                with c1:
-                    st.markdown(f"<h1 style='color:red; margin:0;'>T{ordine['tavolo']}</h1>", unsafe_allow_html=True)
-                    st.caption(f"{ordine['orario']}")
-                with c2:
-                    st.subheader(f"{ordine['prodotto']}")
-                    if str(ordine['nota']) != "nan" and ordine['nota']:
-                        st.info(f"Nota: {ordine['nota']}")
-                with c3:
-                    st.markdown(f"### € {ordine['prezzo']:.2f}")
-                with c4:
-                    # Pulsante per chiudere l'ordine e pagare
-                    if st.button("CHIUDI CONTO 💰", key=f"pay_{i}"):
-                        st.session_state.ordini.pop(i)
+        # Trasformiamo in DataFrame per fare i calcoli facilmente
+        df_ordini = pd.DataFrame(st.session_state.ordini)
+        
+        # 1. VISUALIZZAZIONE PER TAVOLO (IL CONTO)
+        st.header("🧾 Conti Tavoli")
+        conti = df_ordini.groupby("tavolo")["prezzo"].sum().reset_index()
+        
+        col_conti = st.columns(3) # Dividiamo in 3 colonne per risparmiare spazio
+        for index, row in conti.iterrows():
+            with col_conti[index % 3]:
+                with st.container(border=True):
+                    st.error(f"TAVOLO {row['tavolo']}")
+                    st.subheader(f"Totale: € {row['prezzo']:.2f}")
+                    if st.button(f"CHIUDI CONTO T{row['tavolo']}", key=f"chiudi_{row['tavolo']}"):
+                        # Rimuoviamo tutti gli ordini di quel tavolo
+                        st.session_state.ordini = [o for o in st.session_state.ordini if str(o['tavolo']) != str(row['tavolo'])]
                         salva_ordini(st.session_state.ordini)
-                        st.success("Conto Chiuso!")
+                        st.success(f"Conto Tavolo {row['tavolo']} pagato!")
+                        time.sleep(1)
                         st.rerun()
-    
-    time.sleep(10)
+
+        st.divider()
+
+        # 2. LISTA SINGOLI ORDINI (PER PREPARAZIONE)
+        st.header("📋 Dettaglio Comande")
+        for i, ordine in enumerate(st.session_state.ordini):
+            with st.expander(f"T{ordine['tavolo']} - {ordine['prodotto']} ({ordine['orario']})"):
+                st.write(f"**Nota:** {ordine['nota'] if ordine['nota'] else 'Nessuna'}")
+                st.write(f"**Prezzo:** € {ordine['prezzo']:.2f}")
+                if st.button("Rimuovi solo questo prodotto", key=f"del_{i}"):
+                    st.session_state.ordini.pop(i)
+                    salva_ordini(st.session_state.ordini)
+                    st.rerun()
+
+    # Auto-refresh
+    time.sleep(15)
     st.rerun()
 
 # --- INTERFACCIA CLIENTE ---
 else:
     st.title("☕ BAR PAGANO")
-    st.subheader("Fai il tuo ordine")
+    st.subheader("Ordina dal tuo tavolo")
 
-    with st.form("ordine_form"):
-        tavolo = st.selectbox("Il tuo Tavolo", TAVOLI)
-        prodotto_nome = st.selectbox("Cosa desideri?", list(MENU.keys()))
-        prezzo_unitario = MENU[prodotto_nome]
-        
-        st.write(f"Prezzo prodotto: **€ {prezzo_unitario:.2f}**")
-        
-        nota = st.text_input("Note (es: ben cotto, senza zucchero...)")
-        inviato = st.form_submit_button("CONFERMA E INVIA ORDINE", use_container_width=True)
-
-    if inviato:
+    # RIMOSSO IL FORM PER PERMETTERE L'AGGIORNAMENTO DINAMICO DEL PREZZO
+    tavolo_scelto = st.selectbox("Seleziona il tuo Tavolo", TAVOLI)
+    prodotto_scelto = st.selectbox("Cosa desideri?", list(MENU.keys()))
+    
+    # Adesso il prezzo cambia istantaneamente quando cambi prodotto!
+    prezzo_corrente = MENU[prodotto_scelto]
+    st.markdown(f"### Prezzo: € {prezzo_corrente:.2f}")
+    
+    nota = st.text_input("Note (es: macchiato freddo, tazza grande...)")
+    
+    if st.button("INVIA ORDINE AL BANCONE", use_container_width=True, type="primary"):
         nuovo = {
-            "tavolo": tavolo,
-            "prodotto": prodotto_nome,
-            "prezzo": prezzo_unitario,
+            "tavolo": tavolo_scelto,
+            "prodotto": prodotto_scelto,
+            "prezzo": prezzo_corrente,
             "nota": nota,
             "orario": datetime.now().strftime("%H:%M")
         }
@@ -111,7 +118,5 @@ else:
         ordini_attuali.append(nuovo)
         salva_ordini(ordini_attuali)
         st.session_state.ordini = ordini_attuali
-        st.success(f"Ordine inviato! Totale da pagare al banco: € {prezzo_unitario:.2f}")
+        st.success(f"Ordine inviato! Totale attuale per il tavolo: € {prezzo_corrente:.2f}")
         st.balloons()
-
-
