@@ -70,7 +70,7 @@ ruolo = query_params.get("ruolo", "tavolo")
 
 # --- 1. INTERFACCIA BANCONE / CASSA ---
 if ruolo == "banco":
-    st.title("🖥️ DASHBOARD BANCONE - BAR PAGANO")
+    st.title("🖥️ ORDINI BAR PAGANO")
     ordini_attivi = carica_ordini()
 
     if not ordini_attivi:
@@ -109,7 +109,7 @@ if ruolo == "banco":
 
 # --- 2. INTERFACCIA CLIENTE ---
 else:
-    st.title("☕ BENVENUTO AL BAR PAGANO")
+    st.title("☕ BAR PAGANO")
     
     # SELEZIONE TAVOLO
     st.write("### 1. Seleziona il tuo Tavolo:")
@@ -187,3 +187,4 @@ else:
                 if st.button("🗑️ Svuota tutto"):
                     st.session_state.carrello = []
                     st.rerun()
+
