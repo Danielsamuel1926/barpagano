@@ -7,12 +7,19 @@ from datetime import datetime
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
-# CSS per personalizzare la grafica (testi grandi e bottoni alti)
+# CSS PER QUADRATI TAVOLI E TESTI GRANDI
 st.markdown("""
     <style>
+    /* Forza i tasti dei tavoli a essere quadrati e compatti */
+    div[data-testid="column"] button {
+        aspect-ratio: 1 / 1 !important;
+        width: 100% !important;
+        padding: 0px !important;
+        font-weight: bold !important;
+    }
     .product-text { font-size: 24px !important; font-weight: bold; }
     .note-text { font-size: 18px !important; font-style: italic; opacity: 0.8; }
-    .stButton>button { height: 3.5em; font-size: 18px !important; border-radius: 10px; }
+    .stButton>button { border-radius: 10px; }
     .cart-item { 
         background-color: rgba(255, 75, 75, 0.1); 
         padding: 10px; 
@@ -25,7 +32,6 @@ st.markdown("""
 
 DB_FILE = "ordini_bar_pagano.csv"
 
-# --- LISTINO PRODOTTI ---
 MENU = {
     "Brioche e Cornetti": {
         "Cornetto cioccolato": 1.50, "Cornetto crema": 1.50, "Cornetto miele": 1.50,
@@ -42,12 +48,10 @@ MENU = {
     }
 }
 
-# --- STATO DELLA SESSIONE ---
 if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
 if 'categoria_scelta' not in st.session_state: st.session_state.categoria_scelta = "Brioche e Cornetti"
 if 'carrello' not in st.session_state: st.session_state.carrello = []
 
-# --- FUNZIONI DATABASE ---
 def carica_ordini():
     if not os.path.exists(DB_FILE): return []
     try:
@@ -61,74 +65,60 @@ def carica_ordini():
 def salva_ordini_multipli(nuovi_ordini):
     ordini_esistenti = carica_ordini()
     ordini_esistenti.extend(nuovi_ordini)
-    df = pd.DataFrame(ordini_esistenti)
-    df.to_csv(DB_FILE, index=False)
+    pd.DataFrame(ordini_esistenti).to_csv(DB_FILE, index=False)
 
-# Navigazione tramite URL (?ruolo=banco)
 query_params = st.query_params
 ruolo = query_params.get("ruolo", "tavolo")
 
-# --- 1. INTERFACCIA BANCONE / CASSA ---
+# --- BANCONE ---
 if ruolo == "banco":
-    st.title("🖥️ ORDINI BAR PAGANO")
+    st.title("🖥️ BANCONE - BAR PAGANO")
     ordini_attivi = carica_ordini()
-
     if not ordini_attivi:
-        st.info("In attesa di nuovi ordini...")
+        st.info("Nessun ordine.")
     else:
         df = pd.DataFrame(ordini_attivi)
-        df['tavolo'] = df['tavolo'].astype(str)
-        tavoli_attivi = sorted(df['tavolo'].unique(), key=lambda x: int(x) if x.isdigit() else 0)
-
-        cols = st.columns(4) 
-        for idx, t in enumerate(tavoli_attivi):
+        tavoli = sorted(df['tavolo'].unique(), key=lambda x: int(x) if x.isdigit() else 0)
+        cols = st.columns(4)
+        for idx, t in enumerate(tavoli):
             with cols[idx % 4]:
                 with st.container(border=True):
-                    prod_t = df[df['tavolo'] == t]
-                    st.subheader(f"🪑 Tavolo {t}")
-                    
+                    prod_t = df[df['tavolo'] == str(t)]
+                    st.subheader(f"🪑 T{t}")
                     for _, row in prod_t.iterrows():
                         st.markdown(f"<p class='product-text'>• {row['prodotto']}</p>", unsafe_allow_html=True)
                         if str(row['nota']) != 'nan' and row['nota']:
-                            st.markdown(f"<p class='note-text'>&nbsp;&nbsp;({row['nota']})</p>", unsafe_allow_html=True)
-                    
+                            st.markdown(f"<p class='note-text'>({row['nota']})</p>", unsafe_allow_html=True)
                     st.divider()
                     st.markdown(f"**Totale: € {prod_t['prezzo'].sum():.2f}**")
-                    
-                    # Tasto Chiudi Conto (Corretto)
-                    if st.button(f"CHIUDI CONTO T{t}", key=f"pay_{t}", type="primary", use_container_width=True):
-                        rimanenti = [o for o in ordini_attivi if str(o['tavolo']) != t]
-                        if not rimanenti:
-                            pd.DataFrame(columns=["tavolo", "prodotto", "prezzo", "nota", "orario"]).to_csv(DB_FILE, index=False)
-                        else:
-                            pd.DataFrame(rimanenti).to_csv(DB_FILE, index=False)
+                    if st.button(f"CHIUDI T{t}", key=f"pay_{t}", type="primary", use_container_width=True):
+                        rimanenti = [o for o in ordini_attivi if str(o['tavolo']) != str(t)]
+                        pd.DataFrame(rimanenti if rimanenti else columns=["tavolo", "prodotto", "prezzo", "nota", "orario"]).to_csv(DB_FILE, index=False)
                         st.rerun()
-    
     time.sleep(15)
     st.rerun()
 
-# --- 2. INTERFACCIA CLIENTE ---
+# --- CLIENTE ---
 else:
     st.title("☕ BAR PAGANO")
     
-    # SELEZIONE TAVOLO
-    st.write("### 1. Seleziona il tuo Tavolo:")
+    st.write("### 1. Seleziona il Tavolo:")
+    # Usiamo 5 colonne per avere i quadrati vicini anche su mobile
     t_cols = st.columns(5)
     for i in range(1, 21):
         t_str = str(i)
         with t_cols[(i-1) % 5]:
             tipo_t = "primary" if st.session_state.tavolo_scelto == t_str else "secondary"
-            if st.button(f"T{i}", key=f"t_{i}", use_container_width=True, type=tipo_t):
+            if st.button(f"{i}", key=f"t_{i}", use_container_width=True, type=tipo_t):
                 st.session_state.tavolo_scelto = t_str
                 st.rerun()
 
     if st.session_state.tavolo_scelto:
         st.divider()
-        col_menu, col_carrello = st.columns([2, 1])
+        col_m, col_c = st.columns([2, 1])
         
-        with col_menu:
-            st.write(f"### 2. Scegli e aggiungi prodotti:")
-            # Tasti Categoria
+        with col_m:
+            st.write(f"### 2. Menu (Tavolo {st.session_state.tavolo_scelto})")
             cat_cols = st.columns(3)
             for i, cat in enumerate(MENU.keys()):
                 with cat_cols[i]:
@@ -137,8 +127,6 @@ else:
                         st.session_state.categoria_scelta = cat
                         st.rerun()
             
-            # Tasti Prodotti
-            st.write(f"Categoria: **{st.session_state.categoria_scelta}**")
             prod_list = MENU[st.session_state.categoria_scelta]
             p_cols = st.columns(2)
             for idx, (nome, prezzo) in enumerate(prod_list.items()):
@@ -146,45 +134,32 @@ else:
                     if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"pr_{idx}", use_container_width=True):
                         st.session_state.carrello.append({
                             "tavolo": st.session_state.tavolo_scelto,
-                            "prodotto": nome,
-                            "prezzo": prezzo,
-                            "orario": datetime.now().strftime("%H:%M")
+                            "prodotto": nome, "prezzo": prezzo, "orario": datetime.now().strftime("%H:%M")
                         })
                         st.rerun()
         
-        with col_carrello:
+        with col_c:
             st.write("### 🛒 Carrello")
             if not st.session_state.carrello:
-                st.info("Aggiungi qualcosa!")
+                st.info("Vuoto")
             else:
                 totale_c = 0
-                # Usiamo un ciclo per mostrare i prodotti e il tasto rimuovi
                 for i, item in enumerate(st.session_state.carrello):
-                    col_item, col_del = st.columns([4, 1])
-                    with col_item:
-                        st.markdown(f"<div class='cart-item'>{item['prodotto']} - €{item['prezzo']:.2f}</div>", unsafe_allow_html=True)
-                    with col_del:
+                    c_it, c_dl = st.columns([4, 1])
+                    with c_it: st.markdown(f"<div class='cart-item'>{item['prodotto']}</div>", unsafe_allow_html=True)
+                    with c_dl: 
                         if st.button("❌", key=f"del_{i}"):
                             st.session_state.carrello.pop(i)
                             st.rerun()
                     totale_c += item['prezzo']
                 
-                st.markdown(f"## Totale: € {totale_c:.2f}")
-                nota_ordine = st.text_input("Note (es. caffè macchiato freddo)")
-                
-                if st.button("🚀 INVIA ORDINE ORA", use_container_width=True, type="primary"):
-                    # Aggiunge la nota a tutti i prodotti del carrello
-                    for item in st.session_state.carrello:
-                        item['nota'] = nota_ordine
-                    
+                st.markdown(f"**Totale: € {totale_c:.2f}**")
+                nota = st.text_input("Note")
+                if st.button("🚀 INVIA ORDINE", use_container_width=True, type="primary"):
+                    for item in st.session_state.carrello: item['nota'] = nota
                     salva_ordini_multipli(st.session_state.carrello)
-                    st.success("Inviato al bancone!")
-                    st.balloons()
+                    st.success("Inviato!")
                     st.session_state.carrello = []
                     time.sleep(2)
-                    st.rerun()
-                
-                if st.button("🗑️ Svuota tutto"):
-                    st.session_state.carrello = []
                     st.rerun()
 
