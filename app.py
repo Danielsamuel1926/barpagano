@@ -4,10 +4,10 @@ import os
 import time
 from datetime import datetime
 
-# --- CONFIGURAZIONE ---
+# --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
-# CSS PER SFONDO NERO E TEMA SCURO
+# CSS PER SFONDO NERO E TEMA SCURO (DARK MODE)
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -17,6 +17,8 @@ st.markdown("""
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .product-info { font-size: 13px; color: #BBBBBB; text-align: center; margin-bottom: 10px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+    /* Stile specifico per i tasti BancoServito */
+    .stButton>button[kind="secondary"] { background-color: #1E1E1E; color: white; border: 1px solid #333; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -52,16 +54,17 @@ def carica_stock():
 
 def aggiorna_stock(nome, var):
     df = pd.read_csv(STOCK_FILE)
-    qta_attuale = df.loc[df['prodotto'] == nome, 'quantita'].values[0]
-    df.loc[df['prodotto'] == nome, 'quantita'] = max(0, qta_attuale + var)
-    df.to_csv(STOCK_FILE, index=False)
+    if nome in df['prodotto'].values:
+        qta_attuale = df.loc[df['prodotto'] == nome, 'quantita'].values[0]
+        df.loc[df['prodotto'] == nome, 'quantita'] = max(0, qta_attuale + var)
+        df.to_csv(STOCK_FILE, index=False)
 
 # --- LOGICA ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
-    tab1, tab2, tab3 = st.tabs(["📋 ORDINI TAVOLI", "⚡ BANCOSERVITO", "📦 MAGAZZINO"])
+    tab1, tab2, tab3 = st.tabs(["📋 ORDINI TAVOLI", "⚡ BANCOSERVITO (VENDITA RAPIDA)", "📦 MAGAZZINO"])
     
     with tab1:
         ordini = carica_ordini()
@@ -94,18 +97,20 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida al Bancone")
-        st.info("Clicca sui prodotti consegnati al banco per scalare subito lo stock.")
+        st.write("### ⚡ Clicca per scalare dal magazzino")
+        # Carichiamo lo stock aggiornato
         dispo = carica_stock()
+        
         for cat, prodotti in MENU_DATA.items():
-            st.write(f"**{cat}**")
+            st.markdown(f"#### {cat}")
             b_cols = st.columns(4)
             for idx, (nome, prezzo) in enumerate(prodotti.items()):
                 qta = dispo.get(nome, 0)
-                if b_cols[idx % 4].button(f"{nome}\n({qta})", key=f"bs_{nome}", disabled=qta <= 0):
+                # Il pulsante mostra il nome e la quantità aggiornata in tempo reale
+                if b_cols[idx % 4].button(f"{nome}\nDisp: {qta}", key=f"bs_{nome}", disabled=qta <= 0):
                     aggiorna_stock(nome, -1)
-                    st.toast(f"Scalato 1 {nome}")
-                    st.rerun()
+                    st.toast(f"Venduto: {nome}")
+                    st.rerun() # Ricarica per aggiornare i numeri sui tasti
 
     with tab3:
         st.write("### 📦 Carico Magazzino")
@@ -114,17 +119,16 @@ if ruolo == "banco":
             c1, c2 = st.columns([3, 1])
             nuova = c2.number_input(f"{prod}", value=int(qta), key=f"stk_{prod}", step=1)
             if nuova != qta:
-                # Qui usiamo un'assegnazione diretta per il magazzino
                 df = pd.read_csv(STOCK_FILE)
                 df.loc[df['prodotto'] == prod, 'quantita'] = nuova
                 df.to_csv(STOCK_FILE, index=False)
                 st.rerun()
 
-    time.sleep(10)
+    time.sleep(15) # Refresh automatico ogni 15 secondi per nuovi ordini
     st.rerun()
 
 else:
-    # --- CLIENTE ---
+    # --- INTERFACCIA CLIENTE ---
     st.title("☕ BAR PAGANO")
     if st.session_state.get('tavolo_scelto') is None:
         st.write("### 🪑 Seleziona il tuo tavolo:")
@@ -175,6 +179,6 @@ else:
                     aggiorna_stock(item['prodotto'], -1)
                 salva_ordini(ordini_at)
                 st.session_state.carrello = []
-                st.success("Inviato!")
+                st.success("Ordine inviato!")
                 time.sleep(1)
                 st.rerun()
