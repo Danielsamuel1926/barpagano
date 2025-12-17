@@ -17,7 +17,6 @@ st.markdown("""
     .product-info { font-size: 13px; color: #BBBBBB; text-align: center; margin-bottom: 10px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
     .qty-text { font-size: 20px; font-weight: bold; text-align: center; padding-top: 5px; }
-    /* Colore verde per il tasto aggiorna bancone */
     .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -33,26 +32,18 @@ MENU_DATA = {
     "Bevande Fredde": {"Acqua 0.5L": 1.00, "Coca Cola": 2.50, "Aranciata": 2.50, "Birra": 3.00}
 }
 
-# --- FUNZIONE AUDIO NOTIFICA ---
+# --- FUNZIONI ---
 def suona_notifica():
-    audio_html = """
-        <audio autoplay>
-            <source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Notification-Streamlit/main/notification.mp3" type="audio/mp3">
-        </audio>
-    """
-    st.markdown(audio_html, unsafe_allow_html=True)
+    st.markdown("""<audio autoplay><source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Notification-Streamlit/main/notification.mp3" type="audio/mp3"></audio>""", unsafe_allow_html=True)
 
-# --- FUNZIONI DATI ---
 def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
-    try: return pd.read_csv(DB_FILE).to_dict('records')
-    except: return []
+    return pd.read_csv(DB_FILE).to_dict('records')
 
 def salva_ordini(lista):
-    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=COLONNE)
-    df.to_csv(DB_FILE, index=False)
+    pd.DataFrame(lista if lista else columns=COLONNE).to_csv(DB_FILE, index=False)
 
 def carica_stock():
     if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
@@ -67,13 +58,11 @@ def aggiorna_stock_veloce(nome, var):
         df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
         df.to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA RUOLI ---
+# --- LOGICA ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
-    
-    # TASTO AGGIORNA GENERALE BANCONE
     if st.button("🔄 AGGIORNA DISPLAY E ORDINI", use_container_width=True, type="secondary"):
         st.rerun()
 
@@ -81,13 +70,10 @@ if ruolo == "banco":
     
     with tab1:
         ordini = carica_ordini()
-        if ordini and any(o['stato'] == "NO" for o in ordini):
-            suona_notifica()
-
+        if ordini and any(o['stato'] == "NO" for o in ordini): suona_notifica()
         if not ordini: st.info("In attesa ordini...")
         else:
-            df_o = pd.DataFrame(ordini)
-            tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x) if str(x).isdigit() else 0)
+            tavoli = sorted(set(str(o['tavolo']) for o in ordini), key=lambda x: int(x) if x.isdigit() else 0)
             cols = st.columns(3)
             for idx, t in enumerate(tavoli):
                 with cols[idx % 3]:
@@ -96,54 +82,48 @@ if ruolo == "banco":
                         for i, r in enumerate(ordini):
                             if str(r['tavolo']) == str(t):
                                 cl = "servito" if r['stato'] == "SI" else "da-servire"
-                                col_t, col_b = st.columns([3, 1])
-                                col_t.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
-                                if r['stato'] == "NO":
-                                    if col_b.button("Servi", key=f"sv_{t}_{i}"):
-                                        ordini[i]['stato'] = "SI"
-                                        salva_ordini(ordini)
-                                        st.rerun()
-                                else: col_b.write("✅")
-                        st.divider()
+                                c_t, c_b = st.columns([3, 1])
+                                c_t.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
+                                if r['stato'] == "NO" and c_b.button("Fatto", key=f"sv_{t}_{i}"):
+                                    ordini[i]['stato'] = "SI"
+                                    salva_ordini(ordini)
+                                    st.rerun()
                         tot = sum(float(o['prezzo']) for o in ordini if str(o['tavolo']) == str(t))
-                        if st.button(f"PAGATO (€{tot:.2f})", key=f"pay_{t}", type="primary"):
+                        if st.button(f"PAGATO €{tot:.2f}", key=f"pay_{t}", type="primary"):
                             salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)])
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida Bancone")
+        st.write("### ⚡ Vendita Rapida")
         dispo = carica_stock()
         for cat, prodotti in MENU_DATA.items():
-            st.markdown(f"#### {cat}")
-            b_cols = st.columns(4)
-            for idx, (nome, prezzo) in enumerate(prodotti.items()):
-                qta = dispo.get(nome, "∞") if cat == CAT_STOCK else "∞"
-                if b_cols[idx % 4].button(f"{nome}\n({qta})", key=f"bs_{nome}"):
+            st.write(f"**{cat}**")
+            cols_b = st.columns(4)
+            for i, (nome, prezzo) in enumerate(prodotti.items()):
+                q = dispo.get(nome, "∞") if cat == CAT_STOCK else "∞"
+                if cols_b[i % 4].button(f"{nome}\n({q})", key=f"bs_{nome}"):
                     aggiorna_stock_veloce(nome, -1)
                     st.rerun()
 
     with tab3:
         st.write("### 📦 Carico Magazzino (+/-)")
-        stk_dict = carica_stock()
-        for prod in MENU_DATA[CAT_STOCK]:
-            attuale = stk_dict.get(prod, 0)
-            c_name, c_minus, c_val, c_plus = st.columns([3, 1, 1, 1])
-            c_name.write(f"**{prod}**")
-            if c_minus.button("➖", key=f"bm_{prod}"):
-                aggiorna_stock_veloce(prod, -1)
-                st.rerun()
-            c_val.markdown(f"<div class='qty-text'>{attuale}</div>", unsafe_allow_html=True)
-            if c_plus.button("➕", key=f"bp_{prod}"):
-                aggiorna_stock_veloce(prod, 1)
-                st.rerun()
+        stk = carica_stock()
+        for p in MENU_DATA[CAT_STOCK]:
+            c_n, c_m, c_v, c_p = st.columns([3, 1, 1, 1])
+            c_n.write(f"**{p}**")
+            if c_m.button("➖", key=f"m_{p}"): aggiorna_stock_veloce(p, -1); st.rerun()
+            c_v.markdown(f"<div class='qty-text'>{stk.get(p,0)}</div>", unsafe_allow_html=True)
+            if c_p.button("➕", key=f"p_{p}"): aggiorna_stock_veloce(p, 1); st.rerun()
     
-    time.sleep(15)
-    st.rerun()
+    time.sleep(15); st.rerun()
 
 else:
     # --- CLIENTE ---
     st.title("☕ BAR PAGANO")
-    if st.session_state.get('tavolo_scelto') is None:
+    if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
+    if 'carrello' not in st.session_state: st.session_state.carrello = []
+
+    if st.session_state.tavolo_scelto is None:
         st.write("### 🪑 Seleziona il tuo tavolo:")
         t_cols = st.columns(4)
         for i in range(1, 21):
@@ -151,39 +131,39 @@ else:
                 st.session_state.tavolo_scelto = str(i)
                 st.rerun()
     else:
-        col_t, col_b = st.columns([3, 1])
-        col_t.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
-        if col_b.button("🔄 Cambia"):
+        st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
+        if st.button("🔄 Cambia Tavolo"):
             st.session_state.tavolo_scelto = None
             st.rerun()
 
         st.divider()
-        cat_scelta = st.radio("Categoria", list(MENU_DATA.keys()), horizontal=True)
+        cat = st.radio("Scegli Categoria:", list(MENU_DATA.keys()), horizontal=True)
         dispo = carica_stock()
         p_cols = st.columns(2)
         
-        for idx, (nome, prezzo) in enumerate(MENU_DATA[cat_scelta].items()):
-            qta = dispo.get(nome, 999) if cat_scelta == CAT_STOCK else 999
-            disabled = (cat_scelta == CAT_STOCK and qta <= 0)
+        for idx, (nome, prezzo) in enumerate(MENU_DATA[cat].items()):
+            qta = dispo.get(nome, 999) if cat == CAT_STOCK else 999
             with p_cols[idx % 2]:
-                if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=disabled, use_container_width=True):
-                    if 'carrello' not in st.session_state: st.session_state.carrello = []
+                if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=(cat==CAT_STOCK and qta<=0), use_container_width=True):
                     st.session_state.carrello.append({"tavolo": st.session_state.tavolo_scelto, "prodotto": nome, "prezzo": prezzo})
-                if cat_scelta == CAT_STOCK:
-                    st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
+                    st.toast(f"Aggiunto: {nome}")
+                if cat == CAT_STOCK: st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
-        if st.session_state.get('carrello'):
+        if st.session_state.carrello:
             st.divider()
-            tot = sum(item['prezzo'] for item in st.session_state.carrello)
-            st.write(f"🛒 CARRELLO (€{tot:.2f})")
-            if st.button("🚀 INVIA ORDINE", type="primary", use_container_width=True):
-                ord_at = carica_ordini()
+            st.write("🛒 **IL TUO ORDINE**")
+            for i, item in enumerate(st.session_state.carrello):
+                st.write(f"- {item['prodotto']} (€{item['prezzo']:.2f})")
+            
+            if st.button("🚀 INVIA ORDINE AL BANCONE", type="primary", use_container_width=True):
+                ordini_db = carica_ordini()
                 for item in st.session_state.carrello:
-                    item.update({"nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO", "id_univoco": str(time.time()) + item['prodotto']})
-                    ord_at.append(item)
+                    item.update({"nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO", "id_univoco": str(time.time())+item['prodotto']})
+                    ordini_db.append(item)
                     aggiorna_stock_veloce(item['prodotto'], -1)
-                salva_ordini(ord_at)
+                salva_ordini(ordini_db)
                 st.session_state.carrello = []
-                st.success("Inviato!")
-                time.sleep(1)
+                st.success("Ordine inviato con successo!")
+                time.sleep(2)
                 st.rerun()
+
