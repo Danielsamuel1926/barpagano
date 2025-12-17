@@ -7,34 +7,31 @@ from datetime import datetime
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
-# CSS PER TASTI TAVOLI AFFIANCATI E QUADRATI
+# CSS PERSONALIZZATO
 st.markdown("""
     <style>
-    [data-testid="column"] {
-        flex: 1 1 calc(20% - 10px) !important;
-        min-width: 60px !important;
-    }
     div[data-testid="column"] button {
         aspect-ratio: 1 / 1 !important;
         width: 100% !important;
         font-weight: bold !important;
-        font-size: 22px !important;
-        margin-bottom: 8px !important;
+        font-size: 20px !important;
     }
-    .product-text { font-size: 22px !important; font-weight: bold; }
-    .stButton>button { border-radius: 12px; }
+    .product-text { font-size: 24px !important; font-weight: bold; margin-bottom: 0px; }
+    .price-text { font-size: 18px !important; font-weight: normal; opacity: 0.9; }
+    .note-text { font-size: 18px !important; font-style: italic; opacity: 0.8; color: #ff4b4b; }
+    .stock-text { font-size: 14px; color: #666; }
+    .stButton>button { border-radius: 10px; }
     .cart-item { 
         background-color: rgba(255, 75, 75, 0.1); 
-        padding: 8px; border-radius: 8px; margin-bottom: 5px; border-left: 4px solid #FF4B4B;
+        padding: 10px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #FF4B4B;
     }
     </style>
     """, unsafe_allow_html=True)
 
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
-COLONNE = ["tavolo", "prodotto", "prezzo", "nota", "orario"]
 
-# --- LISTINO ---
+# --- LISTINO FISSO ---
 MENU_DATA = {
     "Brioche e Cornetti": {
         "Cornetto cioccolato": 1.50, "Cornetto crema": 1.50, "Cornetto miele": 1.50,
@@ -51,37 +48,38 @@ MENU_DATA = {
     }
 }
 
-# --- FUNZIONI DI GESTIONE FILE (RIPARATE) ---
-def carica_ordini():
-    if not os.path.exists(DB_FILE):
-        pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
-        return []
-    try:
-        df = pd.read_csv(DB_FILE)
-        return df.to_dict('records')
-    except pd.errors.EmptyDataError:
-        # Se il file è vuoto, lo rigeneriamo con le colonne
-        pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
-        return []
-
-def salva_ordini(lista_ordini):
-    df = pd.DataFrame(lista_ordini) if lista_ordini else pd.DataFrame(columns=COLONNE)
-    df.to_csv(DB_FILE, index=False)
+# --- FUNZIONI STOCK (DISPONIBILITÀ) ---
+def inizializza_stock():
+    if not os.path.exists(STOCK_FILE):
+        data = []
+        for cat, prods in MENU_DATA.items():
+            for nome in prods:
+                data.append({"prodotto": nome, "quantita": 50}) # Default 50 pezzi
+        pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
 
 def carica_stock():
-    if not os.path.exists(STOCK_FILE):
-        data = [{"prodotto": n, "quantita": 100} for c in MENU_DATA for n in MENU_DATA[c]]
-        pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
-    try:
-        return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
-    except:
-        return {n: 100 for c in MENU_DATA for n in MENU_DATA[c]}
+    inizializza_stock()
+    df = pd.read_csv(STOCK_FILE)
+    return df.set_index('prodotto')['quantita'].to_dict()
 
-def aggiorna_stock(nome, var):
-    s = carica_stock()
-    if nome in s:
-        s[nome] = max(0, s[nome] + var)
-        pd.DataFrame(list(s.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
+def aggiorna_stock(nome_prodotto, variazione):
+    stock = carica_stock()
+    if nome_prodotto in stock:
+        stock[nome_prodotto] = max(0, stock[nome_prodotto] + variazione)
+        df = pd.DataFrame(list(stock.items()), columns=['prodotto', 'quantita'])
+        df.to_csv(STOCK_FILE, index=False)
+
+# --- FUNZIONI ORDINI ---
+def carica_ordini():
+    if not os.path.exists(DB_FILE): return []
+    try:
+        df = pd.read_csv(DB_FILE)
+        return df.to_dict('records') if not df.empty else []
+    except: return []
+
+def salva_lista_ordini(lista):
+    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=["tavolo", "prodotto", "prezzo", "nota", "orario"])
+    df.to_csv(DB_FILE, index=False)
 
 # --- ANIMAZIONE ---
 def animazione_caffe():
@@ -89,122 +87,132 @@ def animazione_caffe():
         <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
         <script>
         const container = document.getElementById('coffee-rain');
-        const emojis = ['☕', '🍵', '🥐'];
+        const emojis = ['☕', '🍵', '🍩'];
         for (let i = 0; i < 30; i++) {
             const el = document.createElement('div');
             el.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
             el.style.position = 'fixed'; el.style.bottom = '-50px';
             el.style.left = Math.random() * 100 + 'vw';
-            el.style.fontSize = (Math.random() * 20 + 25) + 'px';
-            el.style.transition = 'transform ' + (Math.random() * 2 + 1.5) + 's linear, opacity 1.5s';
+            el.style.fontSize = (Math.random() * 20 + 20) + 'px';
+            el.style.transition = 'transform ' + (Math.random() * 2 + 2) + 's linear, opacity 2s';
             container.appendChild(el);
             setTimeout(() => {
-                el.style.transform = 'translateY(-115vh) rotate(360deg)';
+                el.style.transform = 'translateY(-110vh) rotate(360deg)';
                 el.style.opacity = '0';
             }, 100);
         }
         </script>
     """, height=0)
 
-# Session State
+# Inizializzazione Sessione
 if 'carrello' not in st.session_state: st.session_state.carrello = []
 if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
 if 'categoria_scelta' not in st.session_state: st.session_state.categoria_scelta = "Brioche e Cornetti"
 if 'mostra_animazione' not in st.session_state: st.session_state.mostra_animazione = False
 
-ruolo = st.query_params.get("ruolo", "tavolo")
+query_params = st.query_params
+ruolo = query_params.get("ruolo", "tavolo")
 
-# --- BANCONE ---
+# --- INTERFACCIA BANCONE ---
 if ruolo == "banco":
-    st.title("🖥️ BANCONE")
-    ordini = carica_ordini()
-    if not ordini:
-        st.info("In attesa di ordini...")
-    else:
-        df_o = pd.DataFrame(ordini)
-        tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x) if str(x).isdigit() else 0)
-        cols = st.columns(4)
-        for idx, t in enumerate(tavoli):
-            with cols[idx % 4]:
-                with st.container(border=True):
-                    st.subheader(f"🪑 Tavolo {t}")
-                    p_t = df_o[df_o['tavolo'] == t]
-                    for _, r in p_t.iterrows():
-                        st.write(f"• {r['prodotto']} (€{r['prezzo']:.2f})")
-                    st.divider()
-                    st.write(f"**TOTALE: €{p_t['prezzo'].sum():.2f}**")
-                    if st.button(f"CHIUDI CONTO", key=f"c_{t}", type="primary", use_container_width=True):
-                        nuovi = [o for o in ordini if str(o['tavolo']) != str(t)]
-                        salva_ordini(nuovi)
-                        st.rerun()
-    time.sleep(15)
-    st.rerun()
+    st.title("🖥️ GESTIONE BANCONE")
+    
+    tab1, tab2 = st.tabs(["Ordini Attivi", "Gestione Disponibilità (Sottoscorta)"])
+    
+    with tab1:
+        ordini = carica_ordini()
+        if not ordini: st.info("Nessun ordine.")
+        else:
+            df_o = pd.DataFrame(ordini)
+            tavoli = sorted(df_o['tavolo'].unique())
+            cols = st.columns(4)
+            for idx, t in enumerate(tavoli):
+                with cols[idx % 4]:
+                    with st.container(border=True):
+                        st.subheader(f"🪑 Tavolo {t}")
+                        p_t = df_o[df_o['tavolo'] == t]
+                        for _, r in p_t.iterrows():
+                            st.write(f"• {r['prodotto']} (€{r['prezzo']:.2f})")
+                        st.divider()
+                        st.write(f"**Totale: €{p_t['prezzo'].sum():.2f}**")
+                        if st.button(f"CHIUDI T{t}", key=f"c_{t}"):
+                            salva_lista_ordini([o for o in ordini if str(o['tavolo']) != str(t)])
+                            st.rerun()
+                            
+    with tab2:
+        st.write("### Imposta quantità disponibili")
+        attual_stock = carica_stock()
+        for p_nome, qta in attual_stock.items():
+            col_p, col_q = st.columns([3, 1])
+            new_q = col_q.number_input(f"{p_nome}", value=int(qta), min_value=0, key=f"stk_{p_nome}")
+            if new_q != qta:
+                aggiorna_stock(p_nome, new_q - qta)
+                st.rerun()
 
-# --- CLIENTE ---
+# --- INTERFACCIA CLIENTE ---
 else:
     if st.session_state.mostra_animazione:
         animazione_caffe()
         st.session_state.mostra_animazione = False
 
     st.title("☕ BAR PAGANO")
-    st.write("### 1. Seleziona il tuo Tavolo:")
+    
+    # 1. TAVOLO
+    st.write("### 1. Il tuo Tavolo:")
     t_cols = st.columns(5)
     for i in range(1, 21):
-        t_str = str(i)
-        with t_cols[(i-1) % 5]:
-            stile = "primary" if st.session_state.tavolo_scelto == t_str else "secondary"
-            if st.button(f"{i}", key=f"t_{i}", type=stile):
-                st.session_state.tavolo_scelto = t_str
+        with t_cols[(i-1)%5]:
+            if st.button(f"{i}", key=f"t_{i}", type="primary" if st.session_state.tavolo_scelto==str(i) else "secondary"):
+                st.session_state.tavolo_scelto = str(i)
                 st.rerun()
 
     if st.session_state.tavolo_scelto:
         st.divider()
-        st.write(f"### 2. Menu Tavolo {st.session_state.tavolo_scelto}")
-        c_cols = st.columns(3)
-        for i, cat in enumerate(MENU_DATA.keys()):
-            if c_cols[i].button(cat, use_container_width=True, type="primary" if st.session_state.categoria_scelta==cat else "secondary"):
-                st.session_state.categoria_scelta = cat
-                st.rerun()
+        col_menu, col_cart = st.columns([2, 1])
+        disponibilita = carica_stock()
         
-        col_prod, col_cart = st.columns([2, 1])
-        dispo = carica_stock()
-        
-        with col_prod:
+        with col_menu:
+            st.write("### 2. Scegli cosa ordinare:")
+            cat_cols = st.columns(3)
+            for i, c in enumerate(MENU_DATA.keys()):
+                if cat_cols[i].button(c, type="primary" if st.session_state.categoria_scelta==c else "secondary"):
+                    st.session_state.categoria_scelta = c
+                    st.rerun()
+            
             p_cols = st.columns(2)
-            prods = MENU_DATA[st.session_state.categoria_scelta]
-            for idx, (nome, prezzo) in enumerate(prods.items()):
-                qta = dispo.get(nome, 0)
-                off = qta <= 0
+            prodotti = MENU_DATA[st.session_state.categoria_scelta]
+            for idx, (nome, prezzo) in enumerate(prodotti.items()):
+                qta_residua = disponibilita.get(nome, 0)
+                disabilitato = qta_residua <= 0
+                label = f"➕ {nome}\n€{prezzo:.2f}" if not disabilitato else f"❌ {nome}\nESAURITO"
+                
                 with p_cols[idx % 2]:
-                    label = f"➕ {nome}\n€{prezzo:.2f}" if not off else f"❌ {nome}\nESAURITO"
-                    if st.button(label, key=f"p_{idx}", disabled=off, use_container_width=True):
+                    if st.button(label, key=f"p_{idx}", disabled=disabilitato, use_container_width=True):
                         st.session_state.carrello.append({"prodotto": nome, "prezzo": prezzo, "tavolo": st.session_state.tavolo_scelto})
                         st.rerun()
+                    st.markdown(f"<p class='stock-text'>Disponibili: {qta_residua}</p>", unsafe_allow_html=True)
 
         with col_cart:
             st.write("### 🛒 Carrello")
-            if not st.session_state.carrello:
-                st.write("Vuoto")
-            else:
-                totale = 0
-                for i, item in enumerate(st.session_state.carrello):
-                    col_i, col_d = st.columns([4, 1])
-                    col_i.markdown(f"<div class='cart-item'>{item['prodotto']}</div>", unsafe_allow_html=True)
-                    if col_d.button("❌", key=f"del_{i}"):
-                        st.session_state.carrello.pop(i)
-                        st.rerun()
-                    totale += item['prezzo']
-                
-                st.markdown(f"**Totale: € {totale:.2f}**")
-                nota = st.text_input("Note (opzionale)")
-                if st.button("🚀 INVIA ORDINE", use_container_width=True, type="primary"):
-                    esistenti = carica_ordini()
-                    for item in st.session_state.carrello:
-                        item['nota'] = nota
-                        item['orario'] = datetime.now().strftime("%H:%M")
-                        esistenti.append(item)
-                        aggiorna_stock(item['prodotto'], -1)
-                    salva_ordini(esistenti)
-                    st.session_state.carrello = []
-                    st.session_state.mostra_animazione = True
+            tot = 0
+            for i, item in enumerate(st.session_state.carrello):
+                c1, c2 = st.columns([4, 1])
+                c1.markdown(f"<div class='cart-item'>{item['prodotto']}</div>", unsafe_allow_html=True)
+                if c2.button("❌", key=f"del_{i}"):
+                    st.session_state.carrello.pop(i)
                     st.rerun()
+                tot += item['prezzo']
+            
+            st.write(f"## Totale: €{tot:.2f}")
+            nota = st.text_input("Note")
+            if st.button("🚀 INVIA", type="primary", use_container_width=True) and st.session_state.carrello:
+                esistenti = carica_ordini()
+                for item in st.session_state.carrello:
+                    item['nota'] = nota
+                    item['orario'] = datetime.now().strftime("%H:%M")
+                    esistenti.append(item)
+                    aggiorna_stock(item['prodotto'], -1) # SOTTRAE 1 DALLO STOCK
+                salva_lista_ordini(esistenti)
+                st.session_state.carrello = []
+                st.session_state.mostra_animazione = True
+                st.rerun()
