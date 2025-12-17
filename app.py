@@ -49,7 +49,7 @@ except:
 
 # --- INTERFACCIA BANCONE ---
 if ruolo == "banco":
-    st.title("🖥️ DASHBOARD BANCONE - BAR PAGANO")
+    st.title("🖥️ ORDINI - BAR PAGANO")
     
     # Suono di notifica
     if st.session_state.ordini:
@@ -96,3 +96,4 @@ else:
         st.session_state.ordini = ordini_attuali
         st.success("Ordine inviato!")
         st.balloons()
+
