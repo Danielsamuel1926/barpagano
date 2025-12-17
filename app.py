@@ -10,7 +10,6 @@ st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 # CSS PER QUADRATI TAVOLI E TESTI GRANDI
 st.markdown("""
     <style>
-    /* Forza i tasti dei tavoli a essere quadrati */
     div[data-testid="column"] button {
         aspect-ratio: 1 / 1 !important;
         width: 100% !important;
@@ -53,6 +52,33 @@ MENU = {
 if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
 if 'categoria_scelta' not in st.session_state: st.session_state.categoria_scelta = "Brioche e Cornetti"
 if 'carrello' not in st.session_state: st.session_state.carrello = []
+if 'mostra_animazione' not in st.session_state: st.session_state.mostra_animazione = False
+
+# --- FUNZIONE ANIMAZIONE CAFFE ---
+def animazione_caffe():
+    # JavaScript per creare emoji che volano
+    st.components.v1.html("""
+        <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
+        <script>
+        const container = document.getElementById('coffee-rain');
+        const emojis = ['☕', '🍵', '🥤', '🍩'];
+        for (let i = 0; i < 40; i++) {
+            const el = document.createElement('div');
+            el.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
+            el.style.position = 'fixed';
+            el.style.bottom = '-50px';
+            el.style.left = Math.random() * 100 + 'vw';
+            el.style.fontSize = (Math.random() * 20 + 20) + 'px';
+            el.style.transition = 'transform ' + (Math.random() * 2 + 2) + 's linear, opacity 2s';
+            el.style.opacity = '1';
+            container.appendChild(el);
+            setTimeout(() => {
+                el.style.transform = 'translateY(-110vh) rotate(' + (Math.random() * 360) + 'deg)';
+                el.style.opacity = '0';
+            }, 100);
+        }
+        </script>
+    """, height=0)
 
 # --- FUNZIONI DATABASE ---
 def carica_ordini():
@@ -72,7 +98,6 @@ def salva_lista_su_file(lista):
         df = pd.DataFrame(lista)
     df.to_csv(DB_FILE, index=False)
 
-# Navigazione
 query_params = st.query_params
 ruolo = query_params.get("ruolo", "tavolo")
 
@@ -80,7 +105,6 @@ ruolo = query_params.get("ruolo", "tavolo")
 if ruolo == "banco":
     st.title("🖥️ BANCONE - BAR PAGANO")
     ordini_attivi = carica_ordini()
-    
     if not ordini_attivi:
         st.info("Nessun ordine presente.")
     else:
@@ -98,7 +122,6 @@ if ruolo == "banco":
                             st.markdown(f"<p class='note-text'>({row['nota']})</p>", unsafe_allow_html=True)
                     st.divider()
                     st.markdown(f"**Totale: € {prod_t['prezzo'].sum():.2f}**")
-                    
                     if st.button(f"CHIUDI T{t}", key=f"pay_{t}", type="primary", use_container_width=True):
                         nuovi_ordini = [o for o in ordini_attivi if str(o['tavolo']) != str(t)]
                         salva_lista_su_file(nuovi_ordini)
@@ -108,9 +131,13 @@ if ruolo == "banco":
 
 # --- INTERFACCIA CLIENTE ---
 else:
+    if st.session_state.mostra_animazione:
+        animazione_caffe()
+        st.session_state.mostra_animazione = False
+
     st.title("☕ BAR PAGANO")
     st.write("### 1. Seleziona il Tavolo:")
-    t_cols = st.columns(5) # 5 colonne per avere quadrati belli su mobile
+    t_cols = st.columns(5)
     for i in range(1, 21):
         t_str = str(i)
         with t_cols[(i-1) % 5]:
@@ -167,7 +194,6 @@ else:
                         item['nota'] = nota
                         ordini_esistenti.append(item)
                     salva_lista_su_file(ordini_esistenti)
-                    st.success("Ordine inviato! ☕☕☕") # Qui la magia!
                     st.session_state.carrello = []
-                    time.sleep(1)
+                    st.session_state.mostra_animazione = True
                     st.rerun()
