@@ -16,6 +16,8 @@ st.markdown("""
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .product-info { font-size: 13px; color: #BBBBBB; text-align: center; margin-bottom: 10px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+    /* Stile per il tasto aggiorna */
+    .update-btn button { background-color: #2E7D32 !important; color: white !important; border: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -49,12 +51,6 @@ def carica_stock():
         pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
     return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
 
-def imposta_stock(nome, nuova_qta):
-    df = pd.read_csv(STOCK_FILE)
-    if nome in df['prodotto'].values:
-        df.loc[df['prodotto'] == nome, 'quantita'] = nuova_qta
-        df.to_csv(STOCK_FILE, index=False)
-
 def aggiorna_stock_relativo(nome, var):
     if nome in MENU_DATA[CAT_STOCK]:
         df = pd.read_csv(STOCK_FILE)
@@ -63,7 +59,7 @@ def aggiorna_stock_relativo(nome, var):
             df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
             df.to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA ---
+# --- LOGICA RUOLI ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 
 if ruolo == "banco":
@@ -75,7 +71,7 @@ if ruolo == "banco":
         if not ordini: st.info("In attesa ordini...")
         else:
             df_o = pd.DataFrame(ordini)
-            tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x))
+            tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x) if str(x).isdigit() else 0)
             cols = st.columns(3)
             for idx, t in enumerate(tavoli):
                 with cols[idx % 3]:
@@ -87,7 +83,7 @@ if ruolo == "banco":
                                 col_t, col_b = st.columns([3, 1])
                                 col_t.markdown(f"<span class='{classe}'>{r['prodotto']}</span>", unsafe_allow_html=True)
                                 if r['stato'] == "NO":
-                                    if col_b.button("Fatto", key=f"sv_{t}_{i}"):
+                                    if col_b.button("Servi", key=f"sv_{t}_{i}"):
                                         ordini[i]['stato'] = "SI"
                                         salva_ordini(ordini)
                                         st.rerun()
@@ -99,7 +95,7 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida")
+        st.write("### ⚡ Vendita Rapida Bancone")
         dispo = carica_stock()
         for cat, prodotti in MENU_DATA.items():
             st.markdown(f"#### {cat}")
@@ -118,7 +114,9 @@ if ruolo == "banco":
             attuale = stk.get(prod, 0)
             nuova = c2.number_input(f"{prod}", value=int(attuale), key=f"stk_{prod}", step=1)
             if nuova != attuale:
-                imposta_stock(prod, nuova)
+                df = pd.read_csv(STOCK_FILE)
+                df.loc[df['prodotto'] == prod, 'quantita'] = nuova
+                df.to_csv(STOCK_FILE, index=False)
                 st.rerun()
     time.sleep(15)
     st.rerun()
@@ -126,18 +124,13 @@ if ruolo == "banco":
 else:
     # --- CLIENTE / PAGINA INIZIALE ---
     st.title("☕ BAR PAGANO")
+    
     if st.session_state.get('tavolo_scelto') is None:
-        
-        # --- NUOVO TASTO AGGIORNA QUANTITÀ INIZIALE ---
-        with st.expander("🔄 AGGIORNA DISPONIBILITÀ BRIOCHE"):
-            stk = carica_stock()
-            for prod in MENU_DATA[CAT_STOCK]:
-                c1, c2 = st.columns([3, 1])
-                attuale = stk.get(prod, 0)
-                nuova = c2.number_input(f"Disponibilità {prod}", value=int(attuale), key=f"init_stk_{prod}", step=1)
-                if nuova != attuale:
-                    imposta_stock(prod, nuova)
-                    st.toast(f"Aggiornato {prod} a {nuova}")
+        # TASTO AGGIORNA DISPLAY
+        st.markdown('<div class="update-btn">', unsafe_allow_html=True)
+        if st.button("🔄 AGGIORNA QUANTITÀ DISPLAY", use_container_width=True):
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         
         st.divider()
         st.write("### 🪑 Seleziona il tuo tavolo:")
