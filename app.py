@@ -7,7 +7,6 @@ from datetime import datetime
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
-# CSS PER TEMA SCURO E SFONDO NERO
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -23,8 +22,6 @@ st.markdown("""
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
 COLONNE = ["id_univoco", "tavolo", "prodotto", "prezzo", "nota", "orario", "stato"]
-
-# Categoria speciale con gestione scorte
 CAT_STOCK = "Brioche e Cornetti"
 
 MENU_DATA = {
@@ -33,31 +30,32 @@ MENU_DATA = {
     "Bevande Fredde": {"Acqua 0.5L": 1.00, "Coca Cola": 2.50, "Aranciata": 2.50, "Birra": 3.00}
 }
 
-# --- FUNZIONI DATI CORRETTE ---
+# --- FUNZIONI DATI ---
 def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
     try:
         return pd.read_csv(DB_FILE).to_dict('records')
-    except:
-        return []
+    except: return []
 
 def salva_ordini(lista):
-    # Correzione SyntaxError
-    if lista:
-        df = pd.DataFrame(lista)
-    else:
-        df = pd.DataFrame(columns=COLONNE)
+    df = pd.DataFrame(lista) if lista else pd.DataFrame(columns=COLONNE)
     df.to_csv(DB_FILE, index=False)
 
 def carica_stock():
     if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
-        data = [{"prodotto": n, "quantita": 100} for n in MENU_DATA[CAT_STOCK]]
+        data = [{"prodotto": n, "quantita": 0} for n in MENU_DATA[CAT_STOCK]]
         pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
     return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
 
-def aggiorna_stock(nome, var):
+def imposta_stock(nome, nuova_qta):
+    df = pd.read_csv(STOCK_FILE)
+    if nome in df['prodotto'].values:
+        df.loc[df['prodotto'] == nome, 'quantita'] = nuova_qta
+        df.to_csv(STOCK_FILE, index=False)
+
+def aggiorna_stock_relativo(nome, var):
     if nome in MENU_DATA[CAT_STOCK]:
         df = pd.read_csv(STOCK_FILE)
         if nome in df['prodotto'].values:
@@ -74,8 +72,7 @@ if ruolo == "banco":
     
     with tab1:
         ordini = carica_ordini()
-        if not ordini:
-            st.info("In attesa ordini...")
+        if not ordini: st.info("In attesa ordini...")
         else:
             df_o = pd.DataFrame(ordini)
             tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x))
@@ -102,45 +99,55 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida Bancone")
+        st.write("### ⚡ Vendita Rapida")
         dispo = carica_stock()
         for cat, prodotti in MENU_DATA.items():
             st.markdown(f"#### {cat}")
             b_cols = st.columns(4)
             for idx, (nome, prezzo) in enumerate(prodotti.items()):
-                # Mostra quantità solo per Brioche
                 qta = dispo.get(nome, "∞") if cat == CAT_STOCK else "∞"
                 if b_cols[idx % 4].button(f"{nome}\n({qta})", key=f"bs_{nome}"):
-                    aggiorna_stock(nome, -1)
-                    st.toast(f"Venduto: {nome}")
+                    aggiorna_stock_relativo(nome, -1)
                     st.rerun()
 
     with tab3:
-        st.write("### 📦 Carico Magazzino (Brioche)")
+        st.write("### 📦 Carico Magazzino")
         stk = carica_stock()
         for prod in MENU_DATA[CAT_STOCK]:
             c1, c2 = st.columns([3, 1])
             attuale = stk.get(prod, 0)
             nuova = c2.number_input(f"{prod}", value=int(attuale), key=f"stk_{prod}", step=1)
             if nuova != attuale:
-                df = pd.read_csv(STOCK_FILE)
-                df.loc[df['prodotto'] == prod, 'quantita'] = nuova
-                df.to_csv(STOCK_FILE, index=False)
+                imposta_stock(prod, nuova)
                 st.rerun()
     time.sleep(15)
     st.rerun()
 
 else:
-    # --- CLIENTE ---
+    # --- CLIENTE / PAGINA INIZIALE ---
     st.title("☕ BAR PAGANO")
     if st.session_state.get('tavolo_scelto') is None:
-        st.write("### 🪑 Seleziona tavolo:")
+        
+        # --- NUOVO TASTO AGGIORNA QUANTITÀ INIZIALE ---
+        with st.expander("🔄 AGGIORNA DISPONIBILITÀ BRIOCHE"):
+            stk = carica_stock()
+            for prod in MENU_DATA[CAT_STOCK]:
+                c1, c2 = st.columns([3, 1])
+                attuale = stk.get(prod, 0)
+                nuova = c2.number_input(f"Disponibilità {prod}", value=int(attuale), key=f"init_stk_{prod}", step=1)
+                if nuova != attuale:
+                    imposta_stock(prod, nuova)
+                    st.toast(f"Aggiornato {prod} a {nuova}")
+        
+        st.divider()
+        st.write("### 🪑 Seleziona il tuo tavolo:")
         t_cols = st.columns(4)
         for i in range(1, 21):
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
                 st.session_state.tavolo_scelto = str(i)
                 st.rerun()
     else:
+        # --- MENU ORDINAZIONE ---
         col_t, col_b = st.columns([3, 1])
         col_t.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
         if col_b.button("🔄 Cambia"):
@@ -173,7 +180,7 @@ else:
                 for item in st.session_state.carrello:
                     item.update({"nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO", "id_univoco": str(time.time()) + item['prodotto']})
                     ordini_at.append(item)
-                    aggiorna_stock(item['prodotto'], -1)
+                    aggiorna_stock_relativo(item['prodotto'], -1)
                 salva_ordini(ordini_at)
                 st.session_state.carrello = []
                 st.success("Inviato!")
