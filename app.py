@@ -40,10 +40,18 @@ def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
-    return pd.read_csv(DB_FILE).to_dict('records')
+    try:
+        return pd.read_csv(DB_FILE).to_dict('records')
+    except:
+        return []
 
 def salva_ordini(lista):
-    pd.DataFrame(lista if lista else columns=COLONNE).to_csv(DB_FILE, index=False)
+    # CORREZIONE ERRORE: Gestione corretta della creazione DataFrame
+    if lista:
+        df = pd.DataFrame(lista)
+    else:
+        df = pd.DataFrame(columns=COLONNE)
+    df.to_csv(DB_FILE, index=False)
 
 def carica_stock():
     if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
@@ -52,13 +60,14 @@ def carica_stock():
     return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
 
 def aggiorna_stock_veloce(nome, var):
-    df = pd.read_csv(STOCK_FILE)
-    if nome in df['prodotto'].values:
-        idx = df[df['prodotto'] == nome].index[0]
-        df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
-        df.to_csv(STOCK_FILE, index=False)
+    if nome in MENU_DATA[CAT_STOCK]:
+        df = pd.read_csv(STOCK_FILE)
+        if nome in df['prodotto'].values:
+            idx = df[df['prodotto'] == nome].index[0]
+            df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
+            df.to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA ---
+# --- LOGICA RUOLI ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 
 if ruolo == "banco":
@@ -94,13 +103,13 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida")
+        st.write("### ⚡ Vendita Rapida Bancone")
         dispo = carica_stock()
-        for cat, prodotti in MENU_DATA.items():
-            st.write(f"**{cat}**")
+        for cat_name, prodotti in MENU_DATA.items():
+            st.write(f"**{cat_name}**")
             cols_b = st.columns(4)
             for i, (nome, prezzo) in enumerate(prodotti.items()):
-                q = dispo.get(nome, "∞") if cat == CAT_STOCK else "∞"
+                q = dispo.get(nome, "∞") if cat_name == CAT_STOCK else "∞"
                 if cols_b[i % 4].button(f"{nome}\n({q})", key=f"bs_{nome}"):
                     aggiorna_stock_veloce(nome, -1)
                     st.rerun()
@@ -134,31 +143,39 @@ else:
         st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
         if st.button("🔄 Cambia Tavolo"):
             st.session_state.tavolo_scelto = None
+            st.session_state.carrello = []
             st.rerun()
 
         st.divider()
-        cat = st.radio("Scegli Categoria:", list(MENU_DATA.keys()), horizontal=True)
+        cat_scelta = st.radio("Scegli Categoria:", list(MENU_DATA.keys()), horizontal=True)
         dispo = carica_stock()
         p_cols = st.columns(2)
         
-        for idx, (nome, prezzo) in enumerate(MENU_DATA[cat].items()):
-            qta = dispo.get(nome, 999) if cat == CAT_STOCK else 999
+        for idx, (nome, prezzo) in enumerate(MENU_DATA[cat_scelta].items()):
+            qta = dispo.get(nome, 999) if cat_scelta == CAT_STOCK else 999
             with p_cols[idx % 2]:
-                if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=(cat==CAT_STOCK and qta<=0), use_container_width=True):
+                if st.button(f"➕ {nome}\n€{prezzo:.2f}", key=f"btn_{nome}", disabled=(cat_scelta==CAT_STOCK and qta<=0), use_container_width=True):
                     st.session_state.carrello.append({"tavolo": st.session_state.tavolo_scelto, "prodotto": nome, "prezzo": prezzo})
                     st.toast(f"Aggiunto: {nome}")
-                if cat == CAT_STOCK: st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
+                if cat_scelta == CAT_STOCK: st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
         if st.session_state.carrello:
             st.divider()
-            st.write("🛒 **IL TUO ORDINE**")
+            st.write("🛒 **RIEPILOGO ORDINE**")
+            tot_ordine = 0
             for i, item in enumerate(st.session_state.carrello):
                 st.write(f"- {item['prodotto']} (€{item['prezzo']:.2f})")
+                tot_ordine += item['prezzo']
             
-            if st.button("🚀 INVIA ORDINE AL BANCONE", type="primary", use_container_width=True):
+            if st.button(f"🚀 INVIA ORDINE (€{tot_ordine:.2f})", type="primary", use_container_width=True):
                 ordini_db = carica_ordini()
                 for item in st.session_state.carrello:
-                    item.update({"nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO", "id_univoco": str(time.time())+item['prodotto']})
+                    item.update({
+                        "nota": "", 
+                        "orario": datetime.now().strftime("%H:%M"), 
+                        "stato": "NO", 
+                        "id_univoco": str(time.time()) + item['prodotto']
+                    })
                     ordini_db.append(item)
                     aggiorna_stock_veloce(item['prodotto'], -1)
                 salva_ordini(ordini_db)
@@ -166,4 +183,3 @@ else:
                 st.success("Ordine inviato con successo!")
                 time.sleep(2)
                 st.rerun()
-
