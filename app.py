@@ -7,39 +7,34 @@ from datetime import datetime
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
-# CSS PER TAVOLI QUADRATI E PULSANTI OTTIMIZZATI
+# CSS PERSONALIZZATO
 st.markdown("""
     <style>
-    /* Layout griglia tavoli: 4 colonne */
     [data-testid="column"] {
         flex: 1 1 calc(25% - 10px) !important;
         min-width: 70px !important;
     }
-    
-    /* Stile tasti tavoli */
     div[data-testid="column"] button {
         aspect-ratio: 1 / 1 !important;
         width: 100% !important;
         font-weight: bold !important;
         font-size: 24px !important;
         border-radius: 15px !important;
-        border: 2px solid #f0f2f6 !important;
-        transition: all 0.3s ease;
     }
-
-    /* Evidenziazione tavolo selezionato */
-    div[data-testid="column"] button[kind="primary"] {
-        background-color: #FF4B4B !important;
-        color: white !important;
-        border: 2px solid #FF4B4B !important;
-        transform: scale(1.05);
-        box-shadow: 0px 4px 10px rgba(255, 75, 75, 0.3);
-    }
-
-    .product-text { font-size: 22px !important; font-weight: bold; }
+    .product-text { font-size: 20px !important; font-weight: bold; }
     .cart-item { 
         background-color: rgba(255, 75, 75, 0.05); 
         padding: 10px; border-radius: 10px; margin-bottom: 5px; border-left: 5px solid #FF4B4B;
+    }
+    .selected-tavolo {
+        background-color: #FF4B4B;
+        color: white;
+        padding: 15px;
+        border-radius: 15px;
+        text-align: center;
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 20px;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -65,7 +60,7 @@ MENU_DATA = {
     }
 }
 
-# --- FUNZIONI DATABASE ---
+# --- FUNZIONI ---
 def carica_ordini():
     if not os.path.exists(DB_FILE):
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
@@ -74,7 +69,6 @@ def carica_ordini():
         df = pd.read_csv(DB_FILE)
         return df.to_dict('records')
     except:
-        pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
 
 def salva_ordini(lista_ordini):
@@ -98,7 +92,7 @@ def animazione_caffe():
         <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
         <script>
         const container = document.getElementById('coffee-rain');
-        const emojis = ['☕', '🍵', '🥐', '🍩'];
+        const emojis = ['☕', '🥐', '🍩'];
         for (let i = 0; i < 30; i++) {
             const el = document.createElement('div');
             el.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
@@ -155,22 +149,30 @@ else:
         st.session_state.mostra_animazione = False
 
     st.title("☕ BAR PAGANO")
-    st.write("### 🪑 1. Tocca il tuo tavolo:")
+
+    # LOGICA: MOSTRA TAVOLI SOLO SE NON È STATO SCELTO NULLA
+    if st.session_state.tavolo_scelto is None:
+        st.write("### 🪑 Seleziona il tuo tavolo per iniziare:")
+        t_cols = st.columns(4)
+        for i in range(1, 21):
+            t_str = str(i)
+            with t_cols[(i-1) % 4]:
+                if st.button(f"{i}", key=f"t_{i}", use_container_width=True):
+                    st.session_state.tavolo_scelto = t_str
+                    st.rerun()
     
-    # Griglia tavoli migliorata
-    t_cols = st.columns(4)
-    for i in range(1, 21):
-        t_str = str(i)
-        with t_cols[(i-1) % 4]:
-            # Se selezionato, usa il tipo 'primary' (colore rosso del tema)
-            is_selected = st.session_state.tavolo_scelto == t_str
-            if st.button(f"{i}", key=f"t_{i}", type="primary" if is_selected else "secondary", use_container_width=True):
-                st.session_state.tavolo_scelto = t_str
+    # SE IL TAVOLO È SCELTO, MOSTRA IL MENU E IL TASTO PER TORNARE INDIETRO
+    else:
+        col_tav, col_back = st.columns([3, 1])
+        with col_tav:
+            st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
+        with col_back:
+            if st.button("🔄 Cambia Tavolo", use_container_width=True):
+                st.session_state.tavolo_scelto = None
                 st.rerun()
 
-    if st.session_state.tavolo_scelto:
         st.divider()
-        st.write(f"### 🥐 2. Cosa desideri al Tavolo {st.session_state.tavolo_scelto}?")
+        st.write("### 🥐 Cosa desideri ordinare?")
         
         c_cols = st.columns(3)
         for i, cat in enumerate(MENU_DATA.keys()):
@@ -195,7 +197,7 @@ else:
         with col_cart:
             st.write("🛒 **IL TUO CARRELLO**")
             if not st.session_state.carrello:
-                st.info("Ancora vuoto")
+                st.info("Carrello vuoto")
             else:
                 totale = 0
                 for i, item in enumerate(st.session_state.carrello):
@@ -207,8 +209,8 @@ else:
                     totale += item['prezzo']
                 
                 st.markdown(f"**TOTALE: € {totale:.2f}**")
-                nota = st.text_input("Note (zucchero, caffè freddo, ecc.)")
-                if st.button("🚀 INVIA ORDINE ORA", use_container_width=True, type="primary"):
+                nota = st.text_input("Note")
+                if st.button("🚀 INVIA ORDINE", use_container_width=True, type="primary"):
                     esistenti = carica_ordini()
                     for item in st.session_state.carrello:
                         item['nota'] = nota
@@ -218,4 +220,6 @@ else:
                     salva_ordini(esistenti)
                     st.session_state.carrello = []
                     st.session_state.mostra_animazione = True
+                    # Opzionale: puoi anche resettare il tavolo dopo l'invio
+                    # st.session_state.tavolo_scelto = None 
                     st.rerun()
