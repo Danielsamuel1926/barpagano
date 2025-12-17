@@ -10,38 +10,17 @@ st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 # CSS PERSONALIZZATO
 st.markdown("""
     <style>
-    [data-testid="column"] {
-        flex: 1 1 calc(25% - 10px) !important;
-        min-width: 70px !important;
-    }
-    div[data-testid="column"] button {
-        aspect-ratio: 1 / 1 !important;
-        width: 100% !important;
-        font-weight: bold !important;
-        font-size: 24px !important;
-        border-radius: 15px !important;
-    }
-    .product-text { font-size: 20px !important; font-weight: bold; }
-    .cart-item { 
-        background-color: rgba(255, 75, 75, 0.05); 
-        padding: 10px; border-radius: 10px; margin-bottom: 5px; border-left: 5px solid #FF4B4B;
-    }
-    .selected-tavolo {
-        background-color: #FF4B4B;
-        color: white;
-        padding: 15px;
-        border-radius: 15px;
-        text-align: center;
-        font-size: 24px;
-        font-weight: bold;
-        margin-bottom: 20px;
-    }
+    [data-testid="column"] { flex: 1 1 calc(25% - 10px) !important; min-width: 70px !important; }
+    div[data-testid="column"] button { width: 100% !important; font-weight: bold !important; border-radius: 12px !important; }
+    .product-info { font-size: 14px; color: #666; margin-top: -10px; margin-bottom: 10px; text-align: center; }
+    .cart-item { background-color: rgba(255, 75, 75, 0.05); padding: 10px; border-radius: 10px; margin-bottom: 5px; border-left: 5px solid #FF4B4B; }
+    .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
-COLONNE = ["tavolo", "prodotto", "prezzo", "nota", "orario"]
+COLONNE = ["id_ordine", "tavolo", "prodotto", "prezzo", "nota", "orario"]
 
 # --- LISTINO ---
 MENU_DATA = {
@@ -60,7 +39,7 @@ MENU_DATA = {
     }
 }
 
-# --- FUNZIONI ---
+# --- FUNZIONI DATABASE ---
 def carica_ordini():
     if not os.path.exists(DB_FILE):
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
@@ -87,28 +66,6 @@ def aggiorna_stock(nome, var):
         s[nome] = max(0, s[nome] + var)
         pd.DataFrame(list(s.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
 
-def animazione_caffe():
-    st.components.v1.html("""
-        <div id="coffee-rain" style="position:fixed; top:0; left:0; width:100vw; height:100vh; pointer-events:none; z-index:9999;"></div>
-        <script>
-        const container = document.getElementById('coffee-rain');
-        const emojis = ['☕', '🥐', '🍩'];
-        for (let i = 0; i < 30; i++) {
-            const el = document.createElement('div');
-            el.innerHTML = emojis[Math.floor(Math.random() * emojis.length)];
-            el.style.position = 'fixed'; el.style.bottom = '-50px';
-            el.style.left = Math.random() * 100 + 'vw';
-            el.style.fontSize = (Math.random() * 20 + 25) + 'px';
-            el.style.transition = 'transform ' + (Math.random() * 2 + 1.5) + 's linear, opacity 1.5s';
-            container.appendChild(el);
-            setTimeout(() => {
-                el.style.transform = 'translateY(-115vh) rotate(360deg)';
-                el.style.opacity = '0';
-            }, 100);
-        }
-        </script>
-    """, height=0)
-
 # Session State
 if 'carrello' not in st.session_state: st.session_state.carrello = []
 if 'tavolo_scelto' not in st.session_state: st.session_state.tavolo_scelto = None
@@ -119,61 +76,58 @@ ruolo = st.query_params.get("ruolo", "tavolo")
 
 # --- BANCONE ---
 if ruolo == "banco":
-    st.title("🖥️ BANCONE")
+    st.title("🖥️ GESTIONE BANCONE")
     ordini = carica_ordini()
     if not ordini:
-        st.info("In attesa di ordini...")
+        st.info("Nessun ordine da preparare.")
     else:
         df_o = pd.DataFrame(ordini)
         tavoli_attivi = sorted(df_o['tavolo'].unique(), key=lambda x: int(x) if str(x).isdigit() else 0)
-        cols = st.columns(4)
+        
+        cols = st.columns(3)
         for idx, t in enumerate(tavoli_attivi):
-            with cols[idx % 4]:
+            with cols[idx % 3]:
                 with st.container(border=True):
                     st.subheader(f"🪑 Tavolo {t}")
                     p_t = df_o[df_o['tavolo'] == t]
-                    for _, r in p_t.iterrows():
-                        st.write(f"• {r['prodotto']} (€{r['prezzo']:.2f})")
+                    
+                    for i, r in p_t.iterrows():
+                        col_p, col_v = st.columns([3, 1])
+                        col_p.write(f"**{r['prodotto']}**\n({r['nota'] if pd.notna(r['nota']) else ''})")
+                        # TASTO PER SERVIRE IL SINGOLO PRODOTTO
+                        if col_v.button("Fatto ✅", key=f"done_{r['prodotto']}_{i}_{t}"):
+                            # Rimuove solo questo specifico prodotto dal CSV
+                            nuovi_ordini = [o for j, o in enumerate(ordini) if not (o['tavolo'] == t and j == i)]
+                            salva_ordini(nuovi_ordini)
+                            st.rerun()
+                    
                     st.divider()
-                    st.write(f"**TOTALE: €{p_t['prezzo'].sum():.2f}**")
-                    if st.button(f"LIBERA T{t}", key=f"c_{t}", type="primary", use_container_width=True):
+                    if st.button(f"CHIUDI CONTO (€{p_t['prezzo'].sum():.2f})", key=f"tot_{t}", type="primary"):
                         salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)])
                         st.rerun()
-    time.sleep(15)
+    time.sleep(10)
     st.rerun()
 
 # --- CLIENTE ---
 else:
-    if st.session_state.mostra_animazione:
-        animazione_caffe()
-        st.session_state.mostra_animazione = False
-
     st.title("☕ BAR PAGANO")
 
-    # LOGICA: MOSTRA TAVOLI SOLO SE NON È STATO SCELTO NULLA
     if st.session_state.tavolo_scelto is None:
-        st.write("### 🪑 Seleziona il tuo tavolo per iniziare:")
+        st.write("### 🪑 Seleziona il tuo tavolo:")
         t_cols = st.columns(4)
         for i in range(1, 21):
-            t_str = str(i)
-            with t_cols[(i-1) % 4]:
-                if st.button(f"{i}", key=f"t_{i}", use_container_width=True):
-                    st.session_state.tavolo_scelto = t_str
-                    st.rerun()
+            if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
+                st.session_state.tavolo_scelto = str(i)
+                st.rerun()
     
-    # SE IL TAVOLO È SCELTO, MOSTRA IL MENU E IL TASTO PER TORNARE INDIETRO
     else:
         col_tav, col_back = st.columns([3, 1])
-        with col_tav:
-            st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
-        with col_back:
-            if st.button("🔄 Cambia Tavolo", use_container_width=True):
-                st.session_state.tavolo_scelto = None
-                st.rerun()
+        col_tav.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo_scelto}</div>", unsafe_allow_html=True)
+        if col_back.button("🔄 Cambia", use_container_width=True):
+            st.session_state.tavolo_scelto = None
+            st.rerun()
 
         st.divider()
-        st.write("### 🥐 Cosa desideri ordinare?")
-        
         c_cols = st.columns(3)
         for i, cat in enumerate(MENU_DATA.keys()):
             if c_cols[i].button(cat, use_container_width=True, type="primary" if st.session_state.categoria_scelta==cat else "secondary"):
@@ -187,30 +141,32 @@ else:
             p_cols = st.columns(2)
             prods = MENU_DATA[st.session_state.categoria_scelta]
             for idx, (nome, prezzo) in enumerate(prods.items()):
-                off = dispo.get(nome, 0) <= 0
+                qta = dispo.get(nome, 0)
+                off = qta <= 0
                 with p_cols[idx % 2]:
                     label = f"➕ {nome}\n€{prezzo:.2f}" if not off else f"❌ {nome}\nESAURITO"
                     if st.button(label, key=f"p_{idx}", disabled=off, use_container_width=True):
                         st.session_state.carrello.append({"prodotto": nome, "prezzo": prezzo, "tavolo": st.session_state.tavolo_scelto})
                         st.rerun()
+                    # VISUALIZZAZIONE QUANTITÀ RESIDUA
+                    st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
         with col_cart:
-            st.write("🛒 **IL TUO CARRELLO**")
+            st.write("🛒 **CARRELLO**")
             if not st.session_state.carrello:
-                st.info("Carrello vuoto")
+                st.info("Vuoto")
             else:
                 totale = 0
                 for i, item in enumerate(st.session_state.carrello):
-                    col_i, col_d = st.columns([4, 1.2])
-                    col_i.markdown(f"<div class='cart-item'>{item['prodotto']}</div>", unsafe_allow_html=True)
-                    if col_d.button("Canc", key=f"del_{i}"):
+                    c_i, c_d = st.columns([4, 1.2])
+                    c_i.markdown(f"<div class='cart-item'>{item['prodotto']}</div>", unsafe_allow_html=True)
+                    if c_d.button("Canc", key=f"del_{i}"):
                         st.session_state.carrello.pop(i)
                         st.rerun()
                     totale += item['prezzo']
                 
-                st.markdown(f"**TOTALE: € {totale:.2f}**")
                 nota = st.text_input("Note")
-                if st.button("🚀 INVIA ORDINE", use_container_width=True, type="primary"):
+                if st.button("🚀 INVIA", use_container_width=True, type="primary"):
                     esistenti = carica_ordini()
                     for item in st.session_state.carrello:
                         item['nota'] = nota
@@ -219,7 +175,6 @@ else:
                         aggiorna_stock(item['prodotto'], -1)
                     salva_ordini(esistenti)
                     st.session_state.carrello = []
-                    st.session_state.mostra_animazione = True
-                    # Opzionale: puoi anche resettare il tavolo dopo l'invio
-                    # st.session_state.tavolo_scelto = None 
+                    st.success("Ordine inviato!")
+                    time.sleep(1)
                     st.rerun()
