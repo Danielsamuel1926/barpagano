@@ -7,6 +7,7 @@ from datetime import datetime
 # --- CONFIGURAZIONE PAGINA ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
+# CSS PER TEMA SCURO E SFONDO NERO
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -32,32 +33,36 @@ MENU_DATA = {
     "Bevande Fredde": {"Acqua 0.5L": 1.00, "Coca Cola": 2.50, "Aranciata": 2.50, "Birra": 3.00}
 }
 
-# --- FUNZIONI DATI ---
+# --- FUNZIONI DATI CORRETTE ---
 def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size == 0:
         pd.DataFrame(columns=COLONNE).to_csv(DB_FILE, index=False)
         return []
     try:
         return pd.read_csv(DB_FILE).to_dict('records')
-    except: return []
+    except:
+        return []
 
 def salva_ordini(lista):
-    pd.DataFrame(lista if lista else columns=COLONNE).to_csv(DB_FILE, index=False)
+    # Correzione SyntaxError
+    if lista:
+        df = pd.DataFrame(lista)
+    else:
+        df = pd.DataFrame(columns=COLONNE)
+    df.to_csv(DB_FILE, index=False)
 
 def carica_stock():
     if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size == 0:
-        # Crea stock iniziale solo per le brioche
         data = [{"prodotto": n, "quantita": 100} for n in MENU_DATA[CAT_STOCK]]
         pd.DataFrame(data).to_csv(STOCK_FILE, index=False)
     return pd.read_csv(STOCK_FILE).set_index('prodotto')['quantita'].to_dict()
 
 def aggiorna_stock(nome, var):
-    # Aggiorna solo se il prodotto fa parte della categoria Brioche
     if nome in MENU_DATA[CAT_STOCK]:
         df = pd.read_csv(STOCK_FILE)
         if nome in df['prodotto'].values:
-            qta = df.loc[df['prodotto'] == nome, 'quantita'].values[0]
-            df.loc[df['prodotto'] == nome, 'quantita'] = max(0, qta + var)
+            idx = df[df['prodotto'] == nome].index[0]
+            df.at[idx, 'quantita'] = max(0, df.at[idx, 'quantita'] + var)
             df.to_csv(STOCK_FILE, index=False)
 
 # --- LOGICA ---
@@ -69,7 +74,8 @@ if ruolo == "banco":
     
     with tab1:
         ordini = carica_ordini()
-        if not ordini: st.info("In attesa ordini...")
+        if not ordini:
+            st.info("In attesa ordini...")
         else:
             df_o = pd.DataFrame(ordini)
             tavoli = sorted(df_o['tavolo'].unique(), key=lambda x: int(x))
@@ -96,22 +102,21 @@ if ruolo == "banco":
                             st.rerun()
 
     with tab2:
-        st.write("### ⚡ Vendita Rapida")
+        st.write("### ⚡ Vendita Rapida Bancone")
         dispo = carica_stock()
         for cat, prodotti in MENU_DATA.items():
             st.markdown(f"#### {cat}")
             b_cols = st.columns(4)
             for idx, (nome, prezzo) in enumerate(prodotti.items()):
-                # Mostra quantità solo se è Brioche
+                # Mostra quantità solo per Brioche
                 qta = dispo.get(nome, "∞") if cat == CAT_STOCK else "∞"
-                label = f"{nome}\n({qta})"
-                if b_cols[idx % 4].button(label, key=f"bs_{nome}"):
+                if b_cols[idx % 4].button(f"{nome}\n({qta})", key=f"bs_{nome}"):
                     aggiorna_stock(nome, -1)
                     st.toast(f"Venduto: {nome}")
                     st.rerun()
 
     with tab3:
-        st.write("### 📦 Carico Brioche e Cornetti")
+        st.write("### 📦 Carico Magazzino (Brioche)")
         stk = carica_stock()
         for prod in MENU_DATA[CAT_STOCK]:
             c1, c2 = st.columns([3, 1])
@@ -148,7 +153,6 @@ else:
         p_cols = st.columns(2)
         
         for idx, (nome, prezzo) in enumerate(MENU_DATA[cat_scelta].items()):
-            # Logica quantità solo per Brioche
             qta = dispo.get(nome, 999) if cat_scelta == CAT_STOCK else 999
             disabled = (cat_scelta == CAT_STOCK and qta <= 0)
             
@@ -158,7 +162,7 @@ else:
                     st.session_state.carrello.append({"tavolo": st.session_state.tavolo_scelto, "prodotto": nome, "prezzo": prezzo})
                 
                 if cat_scelta == CAT_STOCK:
-                    st.markdown(f"<div class='product-info'>Rimasti: {qta}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='product-info'>Disponibili: {qta}</div>", unsafe_allow_html=True)
 
         if st.session_state.get('carrello'):
             st.divider()
