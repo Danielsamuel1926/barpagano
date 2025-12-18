@@ -16,8 +16,14 @@ st.markdown("""
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-    /* STILE TASTO AGGIORNA VERDE */
-    .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; border: none !important; font-size: 20px !important; height: 50px !important; }
+    /* STILE TASTO AGGIORNA VERDE - FORZATO */
+    .stButton>button.aggiorna-btn { 
+        background-color: #2E7D32 !important; 
+        color: white !important; 
+        font-size: 24px !important; 
+        height: 60px !important; 
+        border: 2px solid white !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -93,21 +99,26 @@ menu_df = carica_menu()
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
     
-    # 🔄 TASTO AGGIORNA (RIPRISTINATO)
-    if st.button("🔄 AGGIORNA", use_container_width=True, type="secondary"):
+    # 1. IL TASTO AGGIORNA MANUALE (POSIZIONE FISSA)
+    if st.button("🔄 AGGIORNA PAGINA", use_container_width=True, type="secondary"):
         st.rerun()
 
-    # Auto-aggiornamento silenzioso ogni 3s
-    if "last_refresh" not in st.session_state: st.session_state.last_refresh = time.time()
-    if time.time() - st.session_state.last_refresh > 3:
+    st.divider()
+
+    # 2. AUTO-REFRESH SILENZIOSO (OGNI 3 SECONDI)
+    if "last_refresh" not in st.session_state:
         st.session_state.last_refresh = time.time()
+    
+    current_time = time.time()
+    if current_time - st.session_state.last_refresh > 3:
+        st.session_state.last_refresh = current_time
         st.rerun()
 
     tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
     with tab1:
         ordini = carica_ordini()
-        if not ordini: st.info("In attesa di ordini...")
+        if not ordini: st.info("In attesa di nuovi ordini...")
         else:
             tavoli = sorted(set(str(o['tavolo']) for o in ordini), key=lambda x: int(x) if x.isdigit() else 0)
             cols = st.columns(3)
@@ -155,29 +166,27 @@ if ruolo == "banco":
         lista_cats = sorted(menu_df['categoria'].unique())
         cat_da_cancellare = st.selectbox("Seleziona categoria da eliminare", ["---"] + lista_cats)
         if cat_da_cancellare != "---":
-            if st.button(f"Conferma eliminazione {cat_da_cancellare}", type="primary"):
+            if st.button(f"Elimina Categoria {cat_da_cancellare}", type="primary"):
                 menu_df = menu_df[menu_df['categoria'] != cat_da_cancellare]
-                menu_df.to_csv(MENU_FILE, index=False)
-                st.success("Categoria eliminata!"); time.sleep(1); st.rerun()
+                menu_df.to_csv(MENU_FILE, index=False); st.success("Eliminata!"); time.sleep(1); st.rerun()
 
         st.divider()
         # AGGIUNTA NUOVO PRODOTTO
         st.subheader("🆕 Aggiungi Nuovo Prodotto")
         with st.form("nuovo_p"):
             c1, c2 = st.columns(2)
-            cat_esistente = c1.selectbox("Scegli Categoria Esistente", ["---"] + lista_cats)
-            cat_nuova = c2.text_input("Oppure scrivi Nuova Categoria")
+            cat_esistente = c1.selectbox("Usa Categoria Esistente", ["---"] + lista_cats)
+            cat_nuova = c2.text_input("OPPURE scrivi Nuova Categoria")
             nome_n = st.text_input("Nome Prodotto")
             prezzo_n = st.number_input("Prezzo €", step=0.1, min_value=0.0)
-            if st.form_submit_button("AGGIUNGI AL LISTINO"):
-                categoria_finale = cat_nuova if cat_nuova.strip() != "" else cat_esistente
-                if categoria_finale != "---" and nome_n:
-                    nuovo_df = pd.DataFrame([{"categoria": categoria_finale, "prodotto": nome_n, "prezzo": prezzo_n}])
-                    pd.concat([menu_df, nuovo_df], ignore_index=True).to_csv(MENU_FILE, index=False)
-                    st.success(f"Aggiunto!"); time.sleep(1); st.rerun()
+            if st.form_submit_button("AGGIUNGI"):
+                cat_finale = cat_nuova if cat_nuova.strip() != "" else cat_esistente
+                if cat_finale != "---" and nome_n:
+                    nuovo_df = pd.DataFrame([{"categoria": cat_finale, "prodotto": nome_n, "prezzo": prezzo_n}])
+                    pd.concat([menu_df, nuovo_df], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
 
         st.divider()
-        st.subheader("📝 Modifica Listino")
+        st.subheader("📝 Modifica Singolo Prodotto")
         for i, row in menu_df.iterrows():
             with st.expander(f"{row['categoria']} - {row['prodotto']}"):
                 with st.form(f"mod_{i}"):
@@ -228,5 +237,5 @@ else:
                 ord_db = carica_ordini()
                 for c in st.session_state.carrello:
                     ord_db.append({"id_univoco": str(time.time())+c['prodotto'], "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO"})
-                salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
+                salva_ordini(ord_db); st.session_state.carrello = []; st.success("Ordine Inviato!"); time.sleep(1); st.rerun()
 
