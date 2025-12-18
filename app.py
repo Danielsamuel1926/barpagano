@@ -76,7 +76,7 @@ if ruolo == "banco":
 
     with col_tit2:
         # Aumentiamo margin-top a 15px o 20px per spingere il titolo più in basso
-        st.markdown("<h1 style='margin-top: 18px;'>CONSOLE BANCONE</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='margin-top: 25px;'>CONSOLE BANCONE</h1>", unsafe_allow_html=True)
     
     ordini_attuali = carica_ordini()
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
@@ -215,6 +215,7 @@ else: # --- INTERFACCIA CLIENTE ---
                         salva_stock(stk)
                     ords.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora})
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
 
 
 
