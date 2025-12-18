@@ -22,13 +22,24 @@ st.markdown("""
         font-size: 22px !important;
         border-radius: 15px !important;
         margin-bottom: 10px !important;
+        color: white !important;
     }
 
-    /* Stile per gli ordini nella console */
+    /* TAVOLO LIBERO: VERDE */
+    div[data-testid="column"] button[kind="secondary"] {
+        background-color: #2E7D32 !important; /* Verde scuro */
+        border: 2px solid #4CAF50 !important;
+    }
+
+    /* TAVOLO OCCUPATO: ROSSO (Primary) */
+    div[data-testid="column"] button[kind="primary"] {
+        background-color: #D32F2F !important; /* Rosso */
+        border: 2px solid #FF5252 !important;
+    }
+
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     
-    /* Intestazione tavolo selezionato nel menu cliente */
     .selected-tavolo { 
         background-color: #FF4B4B; color: white; padding: 15px; 
         border-radius: 15px; text-align: center; font-size: 24px; 
@@ -44,10 +55,8 @@ def suona_notifica():
 
 def mostra_logo(larghezza=None):
     if os.path.exists("logo.png"):
-        if larghezza:
-            st.image("logo.png", width=larghezza)
-        else:
-            st.image("logo.png", use_container_width=True)
+        if larghezza: st.image("logo.png", width=larghezza)
+        else: st.image("logo.png", use_container_width=True)
     else:
         st.subheader("☕ BAR PAGANO")
 
@@ -85,12 +94,9 @@ menu_df = carica_menu()
 if ruolo == "banco":
     st_autorefresh(interval=5000, key="banco_refresh")
     
-    # Intestazione con Logo piccolo a sinistra e Titolo allineato
     col_header1, col_header2 = st.columns([0.5, 5])
-    with col_header1:
-        mostra_logo()
-    with col_header2:
-        st.markdown("<h1 style='margin-top: 18px;'>CONSOLE BANCONE</h1>", unsafe_allow_html=True)
+    with col_header1: mostra_logo()
+    with col_header2: st.markdown("<h1 style='margin-top: 18px;'>CONSOLE BANCONE</h1>", unsafe_allow_html=True)
     
     ordini_attuali = carica_ordini()
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
@@ -184,10 +190,8 @@ if ruolo == "banco":
 # INTERFACCIA CLIENTE
 # ---------------------------------------------------------
 else:
-    # Logo responsive centrato per il cliente
     c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1])
-    with c_logo2:
-        mostra_logo()
+    with c_logo2: mostra_logo()
 
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
@@ -198,7 +202,6 @@ else:
         ordini_attivi = carica_ordini()
         tavoli_rossi = [str(o['tavolo']) for o in ordini_attivi]
         
-        # Griglia 5 colonne x 3 righe = 15 Tavoli
         numero_tavoli = 15
         colonne_per_fila = 5
         
@@ -208,7 +211,7 @@ else:
                 n_t = i + j + 1
                 if n_t <= numero_tavoli:
                     t_str = str(n_t)
-                    # Colore Rosso se ha ordini (primary), altrimenti Grigio (secondary)
+                    # SE OCCUPATO: Rosso (primary), SE LIBERO: Verde (secondary)
                     tipo_bottone = "primary" if t_str in tavoli_rossi else "secondary"
                     if cols[j].button(f"{n_t}", key=f"btn_t_{n_t}", type=tipo_bottone, use_container_width=True):
                         st.session_state.tavolo = t_str
@@ -244,11 +247,3 @@ else:
                         salva_stock(stk)
                     ords.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora})
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato con successo!"); time.sleep(1); st.rerun()
-
-
-
-
-
-
-
-
