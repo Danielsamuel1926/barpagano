@@ -28,12 +28,15 @@ COLONNE_ORDINI = ["id_univoco", "tavolo", "prodotto", "prezzo", "orario", "stato
 def carica_menu():
     if not os.path.exists(MENU_FILE) or os.stat(MENU_FILE).st_size <= 2:
         df = pd.DataFrame([
-            {"categoria": "Brioche", "prodotto": "Cornetto Semplice", "prezzo": 1.20},
+            {"categoria": "Brioche e Cornetti", "prodotto": "Cornetto Semplice", "prezzo": 1.20},
             {"categoria": "Caffetteria", "prodotto": "Caffè", "prezzo": 1.00}
         ])
         df.to_csv(MENU_FILE, index=False)
         return df
-    return pd.read_csv(MENU_FILE)
+    try:
+        return pd.read_csv(MENU_FILE)
+    except:
+        return pd.DataFrame(columns=["categoria", "prodotto", "prezzo"])
 
 def carica_ordini():
     if not os.path.exists(DB_FILE) or os.stat(DB_FILE).st_size <= 2:
@@ -49,8 +52,7 @@ def salva_ordini(lista):
 
 def carica_stock():
     menu = carica_menu()
-    # Filtriamo solo brioche e cornetti per lo stock
-    mask = menu['categoria'].str.contains('Brioche|Cornetti', case=False, na=False)
+    mask = menu['categoria'].str.contains('Brioche|Cornetti|Cornetto', case=False, na=False)
     prod_stock = menu[mask].copy()
     
     if not os.path.exists(STOCK_FILE) or os.stat(STOCK_FILE).st_size <= 2:
@@ -59,7 +61,6 @@ def carica_stock():
         return prod_stock
     
     stock_df = pd.read_csv(STOCK_FILE)
-    # Sincronizza lo stock se sono stati aggiunti nuovi cornetti nel menu
     for p in prod_stock['prodotto'].unique():
         if p not in stock_df['prodotto'].values:
             nuova_riga = prod_stock[prod_stock['prodotto'] == p].copy()
@@ -74,7 +75,7 @@ def stampa_scontrino(tavolo, prodotti, totale):
     html = f"""
     <div id="s" style="font-family:monospace; width:75mm; color:black; background:white; padding:5px;">
         <h2 style="text-align:center; margin-bottom:5px;">BAR PAGANO</h2>
-        <p style="text-align:center; font-size:12px;">Scontrino Gestionale<br>Tavolo {tavolo} - {ora}</p><hr>
+        <p style="text-align:center; font-size:12px;">Tavolo {tavolo} - {ora}</p><hr>
         <table style="width:100%; font-size:14px;">{righe}</table><hr>
         <h3 style="text-align:right;">TOTALE: €{totale:.2f}</h3>
     </div>
@@ -118,8 +119,10 @@ if ruolo == "banco":
     with t2:
         st.subheader("⚡ Solo Brioche & Cornetti")
         stock_df = carica_stock()
-        # Filtro visivo per sicurezza
-        brioche_view = stock_df[stock_df['categoria'].str.contains('Brioche|Cornetti', case=False, na=False)]
+        brioche_view = stock_df[stock_df['categoria'].str.contains('Brioche|Cornetti|Cornetto', case=False, na=False)]
+        
+        if brioche_view.empty:
+            st.warning("Nessun prodotto trovato nelle categorie Brioche o Cornetti. Controlla i nomi delle categorie nel Listino.")
         
         for i, (idx, r) in enumerate(brioche_view.iterrows()):
             c1, c2, c3 = st.columns([3, 2, 2])
@@ -134,40 +137,48 @@ if ruolo == "banco":
                 st.rerun()
 
     with t3:
-        st.subheader("📝 Modifica Listino")
-        for i, row in menu_df.iterrows():
-            with st.expander(f"Modifica: {row['prodotto']}"):
-                with st.form(f"mod_{i}"):
-                    new_cat = st.text_input("Categoria", row['categoria'])
-                    new_nome = st.text_input("Nome", row['prodotto'])
-                    new_prezzo = st.number_input("Prezzo €", value=float(row['prezzo']), step=0.1)
-                    col1, col2 = st.columns(2)
-                    if col1.form_submit_button("AGGIORNA"):
-                        menu_df.at[i, 'categoria'] = new_cat
-                        menu_df.at[i, 'prodotto'] = new_nome
-                        menu_df.at[i, 'prezzo'] = new_prezzo
-                        menu_df.to_csv(MENU_FILE, index=False)
-                        st.rerun()
-                    if col2.form_submit_button("ELIMINA", type="primary"):
-                        menu_df.drop(i).to_csv(MENU_FILE, index=False)
-                        st.rerun()
+        st.subheader("🛠️ Gestione Categorie e Prodotti")
         
+        # FIX PER CATEGORIE DOPPIE: Mostra elenco prodotti per categoria
+        st.info("Qui puoi correggere le categorie doppie rinominandole o spostando i prodotti.")
+        
+        categorie = sorted(menu_df['categoria'].unique())
+        for cat in categorie:
+            with st.expander(f"Categoria: {cat} ({len(menu_df[menu_df['categoria']==cat])} prodotti)"):
+                prod_in_cat = menu_df[menu_df['categoria'] == cat]
+                for i, row in prod_in_cat.iterrows():
+                    cols_m = st.columns([2, 2, 1, 1])
+                    with st.form(f"form_mod_{i}"):
+                        new_c = st.text_input("Categoria", row['categoria'])
+                        new_p = st.text_input("Nome", row['prodotto'])
+                        new_pr = st.number_input("Prezzo €", value=float(row['prezzo']), step=0.1)
+                        c1, c2 = st.columns(2)
+                        if c1.form_submit_button("AGGIORNA"):
+                            menu_df.at[i, 'categoria'] = new_c
+                            menu_df.at[i, 'prodotto'] = new_p
+                            menu_df.at[i, 'prezzo'] = new_pr
+                            menu_df.to_csv(MENU_FILE, index=False)
+                            st.rerun()
+                        if c2.form_submit_button("ELIMINA", type="primary"):
+                            menu_df.drop(i).to_csv(MENU_FILE, index=False)
+                            st.rerun()
+
         st.divider()
         st.subheader("➕ Aggiungi Nuovo Prodotto")
-        with st.form("nuovo"):
-            n_cat = st.text_input("Nuova Categoria")
-            cat_esistente = st.selectbox("O usa esistente", [""] + list(menu_df['categoria'].unique()))
+        with st.form("nuovo_prod"):
+            n_cat = st.text_input("Nuova Categoria (es. Brioche e Cornetti)")
+            cat_ex = st.selectbox("Oppure seleziona esistente", [""] + list(menu_df['categoria'].unique()))
             n_nome = st.text_input("Nome Prodotto")
             n_prezzo = st.number_input("Prezzo €", min_value=0.0, step=0.1)
             if st.form_submit_button("SALVA PRODOTTO"):
-                final_cat = n_cat if n_cat else cat_esistente
+                final_cat = n_cat if n_cat else cat_ex
                 if n_nome and final_cat:
                     nuovo = pd.DataFrame([{"categoria": final_cat, "prodotto": n_nome, "prezzo": n_prezzo}])
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False)
                     st.rerun()
 
 else:
-    # --- INTERFACCIA CLIENTE ---
+    # --- CLIENTE ---
     st.title("☕ BAR PAGANO")
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
@@ -181,25 +192,25 @@ else:
         st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo}</div>", unsafe_allow_html=True)
         if st.button("⬅️ Cambia Tavolo"): st.session_state.tavolo = None; st.rerun()
         
-        cats = menu_df['categoria'].unique()
-        scelta = st.radio("Scegli categoria:", cats, horizontal=True)
+        cats = sorted(menu_df['categoria'].unique())
+        scelta = st.radio("Cosa desideri?", cats, horizontal=True)
         
         stk = carica_stock().set_index('prodotto')['quantita'].to_dict()
-        
         prods = menu_df[menu_df['categoria'] == scelta]
+        
         p_cols = st.columns(2)
         for i, (idx, r) in enumerate(prods.iterrows()):
-            qta = stk.get(r['prodotto'], 999) # Se non è sotto stock, metti un valore alto
+            qta = stk.get(r['prodotto'], 999)
             with p_cols[i % 2]:
                 if st.button(f"{r['prodotto']}\n€{r['prezzo']:.2f}", key=f"c_{idx}", use_container_width=True, disabled=qta <= 0):
                     st.session_state.carrello.append(r.to_dict())
-                    st.toast("Aggiunto!")
+                    st.toast(f"Aggiunto: {r['prodotto']}")
                 if r['prodotto'] in stk: st.caption(f"Disponibilità: {qta}")
 
         if st.session_state.carrello:
             st.divider()
             tot_c = sum(c['prezzo'] for c in st.session_state.carrello)
-            if st.button(f"🚀 ORDINA €{tot_c:.2f}", type="primary", use_container_width=True):
+            if st.button(f"🚀 INVIA ORDINE €{tot_c:.2f}", type="primary", use_container_width=True):
                 ord_db = carica_ordini()
                 for c in st.session_state.carrello:
                     ord_db.append({
