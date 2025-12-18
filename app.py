@@ -14,7 +14,6 @@ st.markdown("""
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-    /* Stile per il tasto AGGIORNA verde come prima */
     .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; border: none !important; width: 100%; }
     </style>
     """, unsafe_allow_html=True)
@@ -83,7 +82,6 @@ menu_df = carica_menu()
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
     
-    # TASTO AGGIORNA POSIZIONATO IN ALTO
     if st.button("🔄 AGGIORNA", type="secondary"):
         st.rerun()
 
@@ -122,9 +120,12 @@ if ruolo == "banco":
         for i, (idx, r) in enumerate(brioche_view.iterrows()):
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"**{r['prodotto']}** (Stock: {r['quantita']})")
+            
+            # MODIFICATO: Ora il tasto carica +1 invece di +10
             if c2.button("➕ +1", key=f"a_{idx}"):
                 stock_df.at[idx, 'quantita'] += 1
                 stock_df.to_csv(STOCK_FILE, index=False); st.rerun()
+                
             if c3.button(f"VENDI €{r['prezzo']}", key=f"v_{idx}", disabled=r['quantita'] <= 0):
                 stock_df.at[idx, 'quantita'] = max(0, r['quantita'] - 1)
                 stock_df.to_csv(STOCK_FILE, index=False); st.rerun()
