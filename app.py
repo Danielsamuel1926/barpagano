@@ -53,6 +53,12 @@ def suona_notifica():
     audio_html = '<audio autoplay style="display:none;"><source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3"></audio>'
     components.html(audio_html, height=0)
 
+def mostra_logo():
+    if os.path.exists("logo.png"):
+        st.image("logo.png", use_container_width=True)
+    else:
+        st.markdown("<h1 style='text-align: center;'>☕ BAR PAGANO</h1>", unsafe_allow_html=True)
+
 # --- GESTIONE DATABASE (CSV) ---
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
@@ -83,12 +89,11 @@ menu_df = carica_menu()
 ordini_attuali = carica_ordini()
 
 # ---------------------------------------------------------
-# INTERFACCIA BANCONE (GESTIONE COMPLETA)
+# INTERFACCIA BANCONE (GESTIONE COMPLETA) - NO LOGO
 # ---------------------------------------------------------
 if ruolo == "banco":
     st_autorefresh(interval=5000, key="banco_refresh")
-    
-    st.markdown("<h2 style='text-align: center;'>☕ CONSOLE BANCONE</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; padding: 20px;'>👨‍🍳 CONSOLE BANCONE</h2>", unsafe_allow_html=True)
     
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
     if len(ordini_attuali) > st.session_state.ultimo_count:
@@ -173,11 +178,11 @@ if ruolo == "banco":
                             menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 # ---------------------------------------------------------
-# INTERFACCIA CASSA (Solo Chiusura Conti)
+# INTERFACCIA CASSA (Solo Chiusura Conti) - NO LOGO
 # ---------------------------------------------------------
 elif ruolo == "cassa":
     st_autorefresh(interval=5000, key="cassa_refresh")
-    st.markdown("<h2 style='text-align: center;'>💰 CONSOLE CASSA</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; padding: 20px;'>💰 CONSOLE CASSA</h2>", unsafe_allow_html=True)
     
     tavoli_attivi = sorted(list(set(str(o['tavolo']) for o in ordini_attuali)))
     if not tavoli_attivi:
@@ -199,10 +204,11 @@ elif ruolo == "cassa":
                         st.success(f"Tavolo {t} pagato!"); time.sleep(1); st.rerun()
 
 # ---------------------------------------------------------
-# INTERFACCIA CLIENTE
+# INTERFACCIA CLIENTE - CON LOGO
 # ---------------------------------------------------------
 else:
-    st.markdown("<h1 style='text-align: center;'>☕ BAR PAGANO</h1>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2: mostra_logo()
 
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
