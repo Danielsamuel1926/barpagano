@@ -175,7 +175,14 @@ if ruolo == "banco":
                                 menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else: # --- CLIENTE ---
-    st.title("☕ BAR PAGANO")
+    # Centra il logo usando le colonne
+    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
+    with col_logo2:
+        # Sostituisci 'logo.png' con il nome del tuo file o un link URL
+        st.image("logo.png", use_container_width=True) 
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
     
@@ -222,3 +229,4 @@ else: # --- CLIENTE ---
                         "orario": ora_attuale
                     })
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
