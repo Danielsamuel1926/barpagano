@@ -3,23 +3,21 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
+import pytz  # Libreria per il fuso orario italiano
 import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURAZIONE PAGINA ---
-# L'icona della pagina viene impostata qui (se logo.png esiste)
 st.set_page_config(
     page_title="BAR PAGANO", 
     page_icon="logo.png" if os.path.exists("logo.png") else "☕", 
     layout="wide"
 )
 
-# --- CSS PERSONALIZZATO (Tasti Grandi, Quadrati e Colori) ---
+# --- CSS PERSONALIZZATO ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
-    
-    /* Tasti Tavoli Grandi e Quadrati */
     div[data-testid="column"] button {
         width: 100% !important;
         height: 120px !important; 
@@ -29,53 +27,41 @@ st.markdown("""
         margin-bottom: 10px !important;
         color: white !important;
     }
-
-    /* TAVOLO LIBERO (Verde Pagano) */
     div[data-testid="column"] button[kind="secondary"] {
         background-color: #2E7D32 !important; 
         border: 2px solid #4CAF50 !important;
     }
-
-    /* TAVOLO OCCUPATO (Rosso Notifica) */
     div[data-testid="column"] button[kind="primary"] {
         background-color: #D32F2F !important;
         border: 2px solid #FF5252 !important;
     }
-
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
-    
     .selected-tavolo { 
         background-color: #D32F2F; color: white; padding: 15px; 
         border-radius: 15px; text-align: center; font-size: 24px; 
         font-weight: bold; margin-bottom: 15px; 
     }
-
-    /* Ridimensionamento logo per renderlo piccolo */
-    .small-logo {
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-        width: 100px; /* Dimensione fissa piccola */
-    }
     </style>
     """, unsafe_allow_html=True)
 
 # --- FUNZIONI DI SERVIZIO ---
+def get_ora_italiana():
+    tz = pytz.timezone('Europe/Rome')
+    return datetime.now(tz).strftime("%H:%M")
+
 def suona_notifica():
     audio_html = '<audio autoplay style="display:none;"><source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3"></audio>'
     components.html(audio_html, height=0)
 
 def mostra_logo_piccolo():
     if os.path.exists("logo.png"):
-        # Logo piccolo centrato
         _, col_logo, _ = st.columns([2, 1, 2])
-        with col_logo:
-            st.image("logo.png", width=120)
+        with col_logo: st.image("logo.png", width=120)
     else:
         st.markdown("<h2 style='text-align: center;'>☕ BAR PAGANO</h2>", unsafe_allow_html=True)
 
-# --- GESTIONE DATABASE (CSV) ---
+# --- GESTIONE DATABASE ---
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
 MENU_FILE = "menu_personalizzato.csv"
@@ -99,7 +85,6 @@ def carica_stock():
     return df.set_index('prodotto')['quantita'].to_dict() if not df.empty else {}
 def salva_stock(d): pd.DataFrame(list(d.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA DI NAVIGAZIONE ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 menu_df = carica_menu()
 ordini_attuali = carica_ordini()
@@ -139,17 +124,14 @@ if ruolo == "banco":
                                     if o['id_univoco'] == r['id_univoco']: o['stato'] = "SI"
                                 salva_ordini(ordini_attuali); st.rerun()
 
-    # (Tabs 2, 3 e 4 rimangono invariate come nel tuo codice)
     with tab2:
         stk = carica_stock()
-        st.write("### ⚡ Vendita al banco")
         cv = st.columns(4)
         for i, (p, q) in enumerate(stk.items()):
             if cv[i % 4].button(f"{p}\n({q})", key=f"vr_{p}", disabled=(q <= 0)):
                 stk[p] = max(0, q - 1); salva_stock(stk); st.rerun()
     
     with tab3:
-        st.write("### 📦 Stock")
         stk = carica_stock()
         if not menu_df.empty:
             c1, c2 = st.columns(2)
@@ -158,7 +140,6 @@ if ruolo == "banco":
             nuovo_s = c2.selectbox("Prodotto da monitorare", prod_filtrati)
             if st.button("AGGIUNGI ALLO STOCK ✅", use_container_width=True):
                 if nuovo_s not in stk: stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
-        st.divider()
         for p, q in stk.items():
             cx, cm, cq, cp, cd = st.columns([3, 1, 1, 1, 1])
             cx.write(f"**{p}**")
@@ -182,7 +163,7 @@ if ruolo == "banco":
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
 
 # ---------------------------------------------------------
-# INTERFACCIA CASSA
+# INTERFACCIA CASSA (Correzione Decimali)
 # ---------------------------------------------------------
 elif ruolo == "cassa":
     st_autorefresh(interval=5000, key="cassa_refresh")
@@ -197,7 +178,9 @@ elif ruolo == "cassa":
                     items = [o for o in ordini_attuali if str(o['tavolo']) == str(t)]
                     totale = sum(float(x['prezzo']) for x in items)
                     st.subheader(f"Tavolo {t}")
-                    for r in items: st.text(f"• {r['prodotto']} - €{r['prezzo']}")
+                    for r in items: 
+                        # CORREZIONE: Visualizzazione con due decimali :.2f
+                        st.text(f"• {r['prodotto']} - €{float(r['prezzo']):.2f}")
                     st.divider()
                     st.write(f"### Totale: €{totale:.2f}")
                     if st.button(f"PAGATO E CHIUDI", key=f"c_pay_{t}", type="primary", use_container_width=True):
@@ -208,9 +191,7 @@ elif ruolo == "cassa":
 # INTERFACCIA CLIENTE
 # ---------------------------------------------------------
 else:
-    # Mostra logo piccolo in alto
     mostra_logo_piccolo()
-
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
 
@@ -223,7 +204,6 @@ else:
                 n_t = i + j + 1
                 if n_t <= 15:
                     t_str = str(n_t)
-                    # VERDE se libero (secondary), ROSSO se occupato (primary)
                     tipo_btn = "primary" if t_str in tavoli_occupati else "secondary"
                     if cols[j].button(f"{n_t}", key=f"tav_{n_t}", type=tipo_btn, use_container_width=True):
                         st.session_state.tavolo = t_str
@@ -233,13 +213,12 @@ else:
         if st.button("⬅️ CAMBIA TAVOLO", use_container_width=True): 
             st.session_state.tavolo = None; st.rerun()
         
-        # Gestione Ordine Prodotto
         stk = carica_stock()
         if not menu_df.empty:
             cat_scelta = st.radio("Scegli:", sorted(menu_df['categoria'].unique()), horizontal=True)
             for i, r in menu_df[menu_df['categoria'] == cat_scelta].iterrows():
                 q = stk.get(r['prodotto'], None)
-                label = f"➕ {r['prodotto']} | €{r['prezzo']:.2f}" + (f" (Disp: {q})" if q is not None else "")
+                label = f"➕ {r['prodotto']} | €{float(r['prezzo']):.2f}" + (f" (Disp: {q})" if q is not None else "")
                 if st.button(label, key=f"p_{i}", use_container_width=True, disabled=(q is not None and q <= 0)):
                     st.session_state.carrello.append(r.to_dict())
                     st.toast(f"Aggiunto: {r['prodotto']}")
@@ -248,16 +227,17 @@ else:
             st.divider(); st.write("### 🛒 Carrello")
             for idx, c in enumerate(st.session_state.carrello):
                 col1, col2 = st.columns([4, 1])
-                col1.write(f"{c['prodotto']} - €{c['prezzo']:.2f}")
+                col1.write(f"{c['prodotto']} - €{float(c['prezzo']):.2f}")
                 if col2.button("🗑️", key=f"rc_{idx}"): st.session_state.carrello.pop(idx); st.rerun()
             
-            tot_carrello = sum(x['prezzo'] for x in st.session_state.carrello)
+            tot_carrello = sum(float(x['prezzo']) for x in st.session_state.carrello)
             if st.button(f"🚀 INVIA ORDINE (€{tot_carrello:.2f})", type="primary", use_container_width=True):
+                ora_it = get_ora_italiana()
                 for c in st.session_state.carrello:
                     if c['prodotto'] in stk: stk[c['prodotto']] = max(0, stk[c['prodotto']] - 1)
                     ordini_attuali.append({
                         "id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo,
-                        "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": datetime.now().strftime("%H:%M")
+                        "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora_it
                     })
                 salva_stock(stk); salva_ordini(ordini_attuali)
                 st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
