@@ -4,6 +4,7 @@ import os
 import time
 from datetime import datetime
 import streamlit.components.v1 as components
+from streamlit_autorefresh import st_autorefresh # <-- NUOVO: per l'aggiornamento automatico
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
@@ -58,14 +59,19 @@ def carica_stock():
     return df.set_index('prodotto')['quantita'].to_dict()
 def salva_stock(d): pd.DataFrame(list(d.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA ---
+# --- LOGICA RUOLI ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 menu_df = carica_menu()
 
 if ruolo == "banco":
+    # --- AGGIORNAMENTO AUTOMATICO (Ogni 5 secondi) ---
+    st_autorefresh(interval=5000, key="ordini_refresh")
+    
     st.title("🖥️ CONSOLE BANCONE")
     
     ordini_attuali = carica_ordini()
+    
+    # Gestione notifica sonora se arrivano nuovi ordini
     if "ultimo_count" not in st.session_state:
         st.session_state.ultimo_count = len(ordini_attuali)
     
@@ -75,20 +81,12 @@ if ruolo == "banco":
     elif len(ordini_attuali) < st.session_state.ultimo_count:
         st.session_state.ultimo_count = len(ordini_attuali)
 
-    if st.button("🔄 AGGIORNA ORDINI", use_container_width=True, type="secondary"): st.rerun()
-
     tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
     with tab1:
         if not ordini_attuali: st.info("In attesa di nuovi ordini...")
         else:
-            tavoli = []
-            seen = set()
-            for o in ordini_attuali:
-                if str(o['tavolo']) not in seen:
-                    tavoli.append(str(o['tavolo']))
-                    seen.add(str(o['tavolo']))
-
+            tavoli = sorted(list(set(str(o['tavolo']) for o in ordini_attuali)))
             cols = st.columns(3)
             for idx, t in enumerate(tavoli):
                 with cols[idx % 3]:
@@ -99,8 +97,7 @@ if ruolo == "banco":
                         for r in items:
                             cx, ct, cok = st.columns([0.6, 3, 1])
                             if cx.button("❌", key=f"del_o_{r['id_univoco']}"):
-                                nuovi_ords = [o for o in ordini_attuali if o['id_univoco'] != r['id_univoco']]
-                                salva_ordini(nuovi_ords); st.rerun()
+                                salva_ordini([o for o in ordini_attuali if o['id_univoco'] != r['id_univoco']]); st.rerun()
                             cl = "servito" if r['stato'] == "SI" else "da-servire"
                             ora_label = f"[{r['orario']}] " if 'orario' in r else ""
                             ct.markdown(f"<span class='{cl}'>{ora_label}{r['prodotto']}</span>", unsafe_allow_html=True)
@@ -123,7 +120,7 @@ if ruolo == "banco":
                 if cols_v[i % 4].button(f"{p}\n({q})", key=f"vr_{p}", disabled=(q <= 0)):
                     stk[p] = max(0, q - 1); salva_stock(stk); st.rerun()
 
-    with tab3: # STOCK CON SELEZIONE PER CATEGORIA
+    with tab3:
         st.write("### 📦 Monitoraggio Magazzino")
         stk = carica_stock()
         if not menu_df.empty:
@@ -145,7 +142,7 @@ if ruolo == "banco":
             if c4.button("➕", key=f"sp_{p}"): stk[p] = q+1; salva_stock(stk); st.rerun()
             if c5.button("🗑️", key=f"sdel_{p}"): del stk[p]; salva_stock(stk); st.rerun()
 
-    with tab4: # GESTIONE LISTINO
+    with tab4:
         st.subheader("⚙️ Gestione Listino")
         with st.form("add_list", clear_on_submit=True):
             st.write("**Aggiungi nuovo prodotto**")
