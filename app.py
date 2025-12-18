@@ -53,12 +53,6 @@ def suona_notifica():
     audio_html = '<audio autoplay style="display:none;"><source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3"></audio>'
     components.html(audio_html, height=0)
 
-def mostra_logo():
-    if os.path.exists("logo.png"):
-        st.image("logo.png", use_container_width=True)
-    else:
-        st.title("☕ BAR PAGANO")
-
 # --- GESTIONE DATABASE (CSV) ---
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
@@ -94,9 +88,7 @@ ordini_attuali = carica_ordini()
 if ruolo == "banco":
     st_autorefresh(interval=5000, key="banco_refresh")
     
-    col_header1, col_header2 = st.columns([0.5, 5])
-    with col_header1: mostra_logo()
-    with col_header2: st.markdown("<h2 style='margin-top: 18px;'>CONSOLE BANCONE</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>☕ CONSOLE BANCONE</h2>", unsafe_allow_html=True)
     
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
     if len(ordini_attuali) > st.session_state.ultimo_count:
@@ -185,7 +177,7 @@ if ruolo == "banco":
 # ---------------------------------------------------------
 elif ruolo == "cassa":
     st_autorefresh(interval=5000, key="cassa_refresh")
-    st.title("💰 CONSOLE CASSA")
+    st.markdown("<h2 style='text-align: center;'>💰 CONSOLE CASSA</h2>", unsafe_allow_html=True)
     
     tavoli_attivi = sorted(list(set(str(o['tavolo']) for o in ordini_attuali)))
     if not tavoli_attivi:
@@ -210,8 +202,7 @@ elif ruolo == "cassa":
 # INTERFACCIA CLIENTE
 # ---------------------------------------------------------
 else:
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2: mostra_logo()
+    st.markdown("<h1 style='text-align: center;'>☕ BAR PAGANO</h1>", unsafe_allow_html=True)
 
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
