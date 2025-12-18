@@ -16,7 +16,8 @@ st.markdown("""
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
     .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
-    .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; border: none !important; }
+    /* STILE TASTO AGGIORNA VERDE */
+    .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; border: none !important; font-size: 20px !important; height: 50px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -92,7 +93,11 @@ menu_df = carica_menu()
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
     
-    # Auto-aggiornamento 3s
+    # 🔄 TASTO AGGIORNA (RIPRISTINATO)
+    if st.button("🔄 AGGIORNA", use_container_width=True, type="secondary"):
+        st.rerun()
+
+    # Auto-aggiornamento silenzioso ogni 3s
     if "last_refresh" not in st.session_state: st.session_state.last_refresh = time.time()
     if time.time() - st.session_state.last_refresh > 3:
         st.session_state.last_refresh = time.time()
@@ -156,33 +161,23 @@ if ruolo == "banco":
                 st.success("Categoria eliminata!"); time.sleep(1); st.rerun()
 
         st.divider()
-        # AGGIUNTA NUOVO PRODOTTO CON CATEGORIE ESISTENTI
+        # AGGIUNTA NUOVO PRODOTTO
         st.subheader("🆕 Aggiungi Nuovo Prodotto")
         with st.form("nuovo_p"):
-            c1, c2, c3 = st.columns([2, 2, 1])
-            
-            # Menu a tendina per categorie esistenti
+            c1, c2 = st.columns(2)
             cat_esistente = c1.selectbox("Scegli Categoria Esistente", ["---"] + lista_cats)
-            # Campo testo per nuova categoria
             cat_nuova = c2.text_input("Oppure scrivi Nuova Categoria")
-            
             nome_n = st.text_input("Nome Prodotto")
             prezzo_n = st.number_input("Prezzo €", step=0.1, min_value=0.0)
-            
             if st.form_submit_button("AGGIUNGI AL LISTINO"):
-                # Priorità alla nuova se scritta, altrimenti quella scelta
                 categoria_finale = cat_nuova if cat_nuova.strip() != "" else cat_esistente
-                
                 if categoria_finale != "---" and nome_n:
                     nuovo_df = pd.DataFrame([{"categoria": categoria_finale, "prodotto": nome_n, "prezzo": prezzo_n}])
                     pd.concat([menu_df, nuovo_df], ignore_index=True).to_csv(MENU_FILE, index=False)
-                    st.success(f"Aggiunto: {nome_n} in {categoria_finale}")
-                    time.sleep(1); st.rerun()
-                else:
-                    st.error("Seleziona o scrivi una categoria e un nome prodotto!")
+                    st.success(f"Aggiunto!"); time.sleep(1); st.rerun()
 
         st.divider()
-        st.subheader("📝 Modifica Listino Completo")
+        st.subheader("📝 Modifica Listino")
         for i, row in menu_df.iterrows():
             with st.expander(f"{row['categoria']} - {row['prodotto']}"):
                 with st.form(f"mod_{i}"):
@@ -197,7 +192,7 @@ if ruolo == "banco":
                         menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else:
-    # --- CLIENTE ---
+    # --- CLIENTE --- (Invariato)
     st.title("☕ BAR PAGANO")
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
@@ -233,4 +228,5 @@ else:
                 ord_db = carica_ordini()
                 for c in st.session_state.carrello:
                     ord_db.append({"id_univoco": str(time.time())+c['prodotto'], "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO"})
-                salva_ordini(ord_db); st.session_state.carrello = []; st.success("Ordine Inviato!"); time.sleep(1); st.rerun()
+                salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
+
