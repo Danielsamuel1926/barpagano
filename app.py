@@ -101,7 +101,7 @@ if ruolo == "banco":
         suona_notifica()
     st.session_state.ultimo_count = len(ordini_attuali)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VETRINA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
     with tab1:
         if not ordini_attuali: st.info("In attesa di ordini...")
@@ -241,3 +241,4 @@ else:
                     })
                 salva_stock(stk); salva_ordini(ordini_attuali)
                 st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
+
