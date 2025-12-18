@@ -27,9 +27,10 @@ def suona_notifica():
     audio_html = '<audio autoplay style="display:none;"><source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3"></audio>'
     components.html(audio_html, height=0)
 
-def mostra_logo(larghezza=200):
+def mostra_logo():
     if os.path.exists("logo.png"):
-        st.image("logo.png", width=larghezza)
+        # use_container_with=True permette all'immagine di adattarsi alla colonna
+        st.image("logo.png", use_container_width=True)
     else:
         st.title("☕ BAR PAGANO")
 
@@ -203,3 +204,4 @@ else: # --- INTERFACCIA CLIENTE ---
                         salva_stock(stk)
                     ords.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora})
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
