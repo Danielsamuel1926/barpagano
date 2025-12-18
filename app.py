@@ -24,6 +24,36 @@ MENU_FILE = "menu_personalizzato.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
 COLONNE_ORDINI = ["id_univoco", "tavolo", "prodotto", "prezzo", "orario", "stato"]
 
+# --- FUNZIONI DI SUPPORTO ---
+def riproduci_suono():
+    """Riproduce un suono 'ding' (notifica invio ordine)"""
+    audio_html = """
+        <audio autoplay>
+            <source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3">
+        </audio>
+    """
+    st.components.v1.html(audio_html, height=0)
+
+def stampa_scontrino(tavolo, prodotti, totale):
+    """Genera la finestra di stampa"""
+    ora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    righe = "".join([f"<tr><td>{p['prodotto']}</td><td style='text-align:right'>€{float(p['prezzo']):.2f}</td></tr>" for p in prodotti])
+    html = f"""
+    <div id="s" style="font-family:monospace; width:75mm; color:black; background:white; padding:5px;">
+        <h2 style="text-align:center; margin-bottom:5px;">BAR PAGANO</h2>
+        <p style="text-align:center; font-size:12px;">Scontrino Gestionale<br>Tavolo {tavolo} - {ora}</p><hr>
+        <table style="width:100%; font-size:14px;">{righe}</table><hr>
+        <h3 style="text-align:right;">TOTALE: €{totale:.2f}</h3>
+    </div>
+    <script>
+        var w = window.open('', '_blank');
+        w.document.write('<html><head><title>Stampa</title></head><body>' + document.getElementById('s').outerHTML + '</body></html>');
+        w.document.close();
+        setTimeout(function(){{ w.print(); w.close(); }}, 500);
+    </script>
+    """
+    components.html(html, height=0)
+
 # --- FUNZIONI DATI ---
 def carica_menu():
     if not os.path.exists(MENU_FILE) or os.stat(MENU_FILE).st_size <= 2:
@@ -52,28 +82,7 @@ def carica_stock():
         prod_stock['quantita'] = 0
         prod_stock.to_csv(STOCK_FILE, index=False)
         return prod_stock
-    stock_df = pd.read_csv(STOCK_FILE)
-    return stock_df
-
-# --- FUNZIONE STAMPA ---
-def stampa_scontrino(tavolo, prodotti, totale):
-    ora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    righe = "".join([f"<tr><td>{p['prodotto']}</td><td style='text-align:right'>€{float(p['prezzo']):.2f}</td></tr>" for p in prodotti])
-    html = f"""
-    <div id="s" style="font-family:monospace; width:75mm; color:black; background:white; padding:5px;">
-        <h2 style="text-align:center;">BAR PAGANO</h2><hr>
-        <p>Tavolo {tavolo} - {ora}</p>
-        <table style="width:100%;">{righe}</table><hr>
-        <h3 style="text-align:right;">TOTALE: €{totale:.2f}</h3>
-    </div>
-    <script>
-        var w = window.open('', '_blank');
-        w.document.write('<html><body>' + document.getElementById('s').outerHTML + '</body></html>');
-        w.document.close();
-        setTimeout(function(){{ w.print(); w.close(); }}, 500);
-    </script>
-    """
-    components.html(html, height=0)
+    return pd.read_csv(STOCK_FILE)
 
 # --- LOGICA APP ---
 ruolo = st.query_params.get("ruolo", "tavolo")
@@ -89,6 +98,11 @@ if ruolo == "banco":
     
     with tab1:
         ordini = carica_ordini()
+        # Notifica Visiva per nuovi ordini (se ci sono ordini non serviti)
+        non_serviti = [o for o in ordini if o['stato'] == "NO"]
+        if non_serviti:
+            st.warning(f"🔔 Ci sono {len(non_serviti)} nuovi prodotti da servire!")
+
         if not ordini: st.info("Nessun ordine attivo.")
         else:
             tavoli = sorted(list(set(str(o['tavolo']) for o in ordini)))
@@ -108,8 +122,10 @@ if ruolo == "banco":
                                     if o['id_univoco'] == r['id_univoco']: o['stato'] = "SI"
                                 salva_ordini(ordini)
                                 st.rerun()
-                        if st.button(f"PAGA €{tot:.2f}", key=f"p_{t}", type="primary", use_container_width=True):
-                            stampa_scontrino(t, items, tot)
+                        
+                        # Al clic su PAGATO, scatta la stampa e l'eliminazione
+                        if st.button(f"PAGATO €{tot:.2f}", key=f"p_{t}", type="primary", use_container_width=True):
+                            stampa_scontrino(t, items, tot) # <--- Stampa ordine
                             salva_ordini([o for o in ordini if str(o['tavolo']) != t])
                             st.rerun()
 
@@ -120,12 +136,9 @@ if ruolo == "banco":
         for i, (idx, r) in enumerate(brioche_view.iterrows()):
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"**{r['prodotto']}** (Stock: {r['quantita']})")
-            
-            # MODIFICATO: Ora il tasto carica +1 invece di +10
             if c2.button("➕ +1", key=f"a_{idx}"):
                 stock_df.at[idx, 'quantita'] += 1
                 stock_df.to_csv(STOCK_FILE, index=False); st.rerun()
-                
             if c3.button(f"VENDI €{r['prezzo']}", key=f"v_{idx}", disabled=r['quantita'] <= 0):
                 stock_df.at[idx, 'quantita'] = max(0, r['quantita'] - 1)
                 stock_df.to_csv(STOCK_FILE, index=False); st.rerun()
@@ -179,14 +192,20 @@ else:
         for i, (idx, r) in enumerate(prods.iterrows()):
             if st.button(f"➕ {r['prodotto']} - €{r['prezzo']:.2f}", key=f"c_{idx}", use_container_width=True):
                 st.session_state.carrello.append(r.to_dict())
-                st.toast("Aggiunto!")
+                st.toast(f"Aggiunto: {r['prodotto']}")
 
         if st.session_state.carrello:
             st.divider()
             if st.button(f"🚀 INVIA ORDINE (€{sum(c['prezzo'] for c in st.session_state.carrello):.2f})", type="primary", use_container_width=True):
+                # SUONO ALL'INVIO ORDINE
+                riproduci_suono()
+                
                 ord_db = carica_ordini()
                 for c in st.session_state.carrello:
                     ord_db.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "orario": datetime.now().strftime("%H:%M"), "stato": "NO"})
-                salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
-
+                salva_ordini(ord_db)
+                st.session_state.carrello = []
+                st.success("Ordine Inviato!")
+                time.sleep(1)
+                st.rerun()
 
