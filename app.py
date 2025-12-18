@@ -127,3 +127,4 @@ else:
     st.title("☕ BENVENUTO AL BAR PAGANO")
     # [Logica Cliente omessa per brevità...]
 
+
