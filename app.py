@@ -46,7 +46,6 @@ def carica_menu(): return pd.read_csv(MENU_FILE)
 def carica_ordini(): 
     try: 
         df = pd.read_csv(DB_FILE)
-        # Ordiniamo per orario (id_univoco contiene il timestamp di creazione)
         return df.sort_values(by="id_univoco").to_dict('records')
     except: return []
 def salva_ordini(lista): pd.DataFrame(lista).to_csv(DB_FILE, index=False)
@@ -75,12 +74,11 @@ if ruolo == "banco":
 
     if st.button("🔄 AGGIORNA ORDINI", use_container_width=True, type="secondary"): st.rerun()
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI (PER ORA)", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
-    with tab1:
+    with tab1: # ORDINI CRONOLOGICI
         if not ordini_attuali: st.info("In attesa di nuovi ordini...")
         else:
-            # Mostra i tavoli che hanno ordini, ma all'interno gli ordini seguono la cronologia
             tavoli = []
             seen = set()
             for o in ordini_attuali:
@@ -100,7 +98,6 @@ if ruolo == "banco":
                                 nuovi_ords = [o for o in ordini_attuali if o['id_univoco'] != r['id_univoco']]
                                 salva_ordini(nuovi_ords); st.rerun()
                             cl = "servito" if r['stato'] == "SI" else "da-servire"
-                            # Aggiunto orario accanto al prodotto
                             ora_label = f"[{r['orario']}] " if 'orario' in r else ""
                             ct.markdown(f"<span class='{cl}'>{ora_label}{r['prodotto']}</span>", unsafe_allow_html=True)
                             if r['stato'] == "NO" and cok.button("Ok", key=f"ok_{r['id_univoco']}"):
@@ -122,13 +119,25 @@ if ruolo == "banco":
                 if cols_v[i % 4].button(f"{p}\n({q})", key=f"vr_{p}", disabled=(q <= 0)):
                     stk[p] = max(0, q - 1); salva_stock(stk); st.rerun()
 
-    with tab3: # STOCK
+    with tab3: # STOCK CON SELEZIONE PER CATEGORIA
         st.write("### 📦 Monitoraggio Magazzino")
         stk = carica_stock()
-        nuovo_s = st.selectbox("Seleziona dal listino per monitorare:", ["---"] + list(menu_df['prodotto'].unique()))
-        if st.button("ABILITA MONITORAGGIO") and nuovo_s != "---":
-            stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
+        
+        # Modifica: Selezione prodotto dal listino divisa per categoria
+        if not menu_df.empty:
+            st.write("**Aggiungi prodotto al monitoraggio:**")
+            c1, c2 = st.columns(2)
+            cat_stk = c1.selectbox("1. Scegli Categoria", sorted(menu_df['categoria'].unique()), key="cat_stock_sel")
+            prod_filtrati = menu_df[menu_df['categoria'] == cat_stk]['prodotto'].unique()
+            nuovo_s = c2.selectbox("2. Scegli Prodotto", prod_filtrati, key="prod_stock_sel")
+            
+            if st.button("ABILITA MONITORAGGIO ✅", use_container_width=True):
+                if nuovo_s not in stk:
+                    stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
+                else: st.warning("Prodotto già monitorato")
+        
         st.divider()
+        st.write("**Prodotti in esaurimento/monitorati:**")
         for p, q in stk.items():
             c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
             c1.write(f"**{p}**")
@@ -137,10 +146,8 @@ if ruolo == "banco":
             if c4.button("➕", key=f"sp_{p}"): stk[p] = q+1; salva_stock(stk); st.rerun()
             if c5.button("🗑️", key=f"sdel_{p}"): del stk[p]; salva_stock(stk); st.rerun()
 
-    with tab4: # GESTIONE LISTINO (MODIFICATO: PER CATEGORIA E MODIFICA PREZZI)
+    with tab4: # GESTIONE LISTINO
         st.subheader("⚙️ Gestione Listino")
-        
-        # Form per aggiunta
         with st.form("add_list", clear_on_submit=True):
             st.write("**Aggiungi nuovo prodotto**")
             c1, c2 = st.columns(2)
@@ -156,8 +163,6 @@ if ruolo == "banco":
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
 
         st.divider()
-        st.write("### 📝 Elenco Prodotti per Categoria")
-        
         if not menu_df.empty:
             for cat in sorted(menu_df['categoria'].unique()):
                 with st.expander(f"📂 {cat.upper()}", expanded=False):
@@ -167,17 +172,12 @@ if ruolo == "banco":
                             c_nome, c_prez, c_salva, c_del = st.columns([3, 1.5, 1, 1])
                             nuovo_nome = c_nome.text_input("Nome", r['prodotto'], label_visibility="collapsed")
                             nuovo_prezzo = c_prez.number_input("€", value=float(r['prezzo']), step=0.1, label_visibility="collapsed")
-                            
                             if c_salva.form_submit_button("💾"):
                                 menu_df.at[i, 'prodotto'] = nuovo_nome
                                 menu_df.at[i, 'prezzo'] = nuovo_prezzo
-                                menu_df.to_csv(MENU_FILE, index=False)
-                                st.success("Modificato!")
-                                time.sleep(0.5); st.rerun()
-                                
+                                menu_df.to_csv(MENU_FILE, index=False); st.rerun()
                             if c_del.form_submit_button("🗑️"):
-                                menu_df.drop(i).to_csv(MENU_FILE, index=False)
-                                st.rerun()
+                                menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else: # --- CLIENTE ---
     st.title("☕ BAR PAGANO")
