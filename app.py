@@ -65,13 +65,18 @@ menu_df = carica_menu()
 if ruolo == "banco":
     st_autorefresh(interval=5000, key="banco_refresh")
     
-    # Nella console bancone lo teniamo in un angolo per non rubare spazio agli ordini
-    col_tit1, col_tit2 = st.columns([1, 5])
+    # Creiamo due colonne: una piccola per il logo (1) e una grande per il titolo (4)
+    col_tit1, col_tit2 = st.columns([1, 4])
+    
     with col_tit1:
         if os.path.exists("logo.png"):
             st.image("logo.png", use_container_width=True)
+        else:
+            st.write("☕") # Emoji di backup se manca il logo
+
     with col_tit2:
-        st.title("CONSOLE BANCONE")
+        # Aggiungiamo un po' di spazio in alto per allinearlo al centro dell'immagine
+        st.markdown("<h1 style='margin-top: 10px;'>CONSOLE BANCONE</h1>", unsafe_allow_html=True)
     
     ordini_attuali = carica_ordini()
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
@@ -210,5 +215,6 @@ else: # --- INTERFACCIA CLIENTE ---
                         salva_stock(stk)
                     ords.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora})
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
 
 
