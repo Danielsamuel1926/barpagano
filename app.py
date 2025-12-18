@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import time
 from datetime import datetime
+import streamlit.components.v1 as components
 
 # --- CONFIGURAZIONE ---
 st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
@@ -18,6 +19,15 @@ st.markdown("""
     .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
+
+# --- FUNZIONE NOTIFICA SONORA ---
+def suona_notifica():
+    audio_html = """
+        <audio autoplay style="display:none;">
+            <source src="https://raw.githubusercontent.com/rafaelreis-hotmart/Audio-Files/main/notification.mp3" type="audio/mp3">
+        </audio>
+    """
+    components.html(audio_html, height=0)
 
 # --- GESTIONE DATI ---
 DB_FILE = "ordini_bar_pagano.csv"
@@ -49,43 +59,48 @@ menu_df = carica_menu()
 
 if ruolo == "banco":
     st.title("🖥️ CONSOLE BANCONE")
-    if st.button("🔄 AGGIORNA PAGINA", use_container_width=True, type="secondary"): st.rerun()
+    
+    # Sistema Notifica Nuovi Ordini
+    ordini_attuali = carica_ordini()
+    if "ultimo_count" not in st.session_state:
+        st.session_state.ultimo_count = len(ordini_attuali)
+    
+    if len(ordini_attuali) > st.session_state.ultimo_count:
+        suona_notifica()
+        st.session_state.ultimo_count = len(ordini_attuali)
+    elif len(ordini_attuali) < st.session_state.ultimo_count:
+        st.session_state.ultimo_count = len(ordini_attuali)
+
+    if st.button("🔄 AGGIORNA ORDINI", use_container_width=True, type="secondary"): st.rerun()
 
     tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
     with tab1: # TABELLA ORDINI
-        ordini = carica_ordini()
-        if not ordini: st.info("In attesa di nuovi ordini...")
+        if not ordini_attuali: st.info("In attesa di nuovi ordini...")
         else:
-            tavoli = sorted(set(str(o['tavolo']) for o in ordini), key=lambda x: int(x) if x.isdigit() else 0)
+            tavoli = sorted(set(str(o['tavolo']) for o in ordini_attuali), key=lambda x: int(x) if x.isdigit() else 0)
             cols = st.columns(3)
             for idx, t in enumerate(tavoli):
                 with cols[idx % 3]:
                     with st.container(border=True):
                         st.subheader(f"🪑 Tavolo {t}")
-                        items = [o for o in ordini if str(o['tavolo']) == str(t)]
-                        
+                        items = [o for o in ordini_attuali if str(o['tavolo']) == str(t)]
                         for r in items:
                             cx, ct, cok = st.columns([0.6, 3, 1])
-                            # 1. ELIMINA PRODOTTO DA ORDINE (RIPENSAMENTO)
                             if cx.button("❌", key=f"del_o_{r['id_univoco']}"):
-                                ordini = [o for o in ordini if o['id_univoco'] != r['id_univoco']]
-                                salva_ordini(ordini); st.rerun()
-                                
+                                nuovi_ords = [o for o in ordini_attuali if o['id_univoco'] != r['id_univoco']]
+                                salva_ordini(nuovi_ords); st.rerun()
                             cl = "servito" if r['stato'] == "SI" else "da-servire"
                             ct.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
-                            
                             if r['stato'] == "NO" and cok.button("Ok", key=f"ok_{r['id_univoco']}"):
-                                for o in ordini: 
+                                for o in ordini_attuali: 
                                     if o['id_univoco'] == r['id_univoco']: o['stato'] = "SI"
-                                salva_ordini(ordini); st.rerun()
-                        
+                                salva_ordini(ordini_attuali); st.rerun()
                         st.divider()
                         tutti_ok = all(o['stato'] == "SI" for o in items)
                         tot = sum(float(o['prezzo']) for o in items)
-                        # 2. TASTO PAGATO VINCOLATO AL SERVIZIO
                         if st.button(f"PAGATO €{tot:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_ok):
-                            salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)]); st.rerun()
+                            salva_ordini([o for o in ordini_attuali if str(o['tavolo']) != str(t)]); st.rerun()
 
     with tab2: # VENDITA RAPIDA
         stk = carica_stock()
@@ -96,10 +111,10 @@ if ruolo == "banco":
                 if cols_v[i % 4].button(f"{p}\n({q})", key=f"vr_{p}", disabled=(q <= 0)):
                     stk[p] = max(0, q - 1); salva_stock(stk); st.rerun()
 
-    with tab3: # STOCK
-        st.write("### 📦 Carico/Scarico Magazzino")
+    with tab3: # GESTIONE STOCK
+        st.write("### 📦 Monitoraggio Magazzino")
         stk = carica_stock()
-        nuovo_s = st.selectbox("Seleziona dal listino:", ["---"] + list(menu_df['prodotto'].unique()))
+        nuovo_s = st.selectbox("Seleziona dal listino per monitorare:", ["---"] + list(menu_df['prodotto'].unique()))
         if st.button("ABILITA MONITORAGGIO") and nuovo_s != "---":
             stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
         st.divider()
@@ -111,22 +126,27 @@ if ruolo == "banco":
             if c4.button("➕", key=f"sp_{p}"): stk[p] = q+1; salva_stock(stk); st.rerun()
             if c5.button("🗑️", key=f"sdel_{p}"): del stk[p]; salva_stock(stk); st.rerun()
 
-    with tab4: # LISTINO
-        st.subheader("⚙️ Gestione Listino")
+    with tab4: # GESTIONE LISTINO
+        st.subheader("⚙️ Modifica Listino")
         with st.form("add_list", clear_on_submit=True):
             c1, c2 = st.columns(2)
-            cat = c2.text_input("Nuova Categoria") if (c1.selectbox("Categoria", ["---"] + sorted(list(menu_df['categoria'].unique())))) == "---" else c1.selectbox("Categoria", sorted(list(menu_df['categoria'].unique())))
+            esistenti = sorted(list(menu_df['categoria'].unique())) if not menu_df.empty else []
+            cat_e = c1.selectbox("Usa Categoria esistente", ["---"] + esistenti)
+            cat_n = c2.text_input("Oppure crea nuova categoria")
             nome = st.text_input("Nome Prodotto")
-            prez = st.number_input("Prezzo €", min_value=0.0, step=0.1)
-            if st.form_submit_button("AGGIUNGI PRODOTTO"):
-                if cat != "---" and nome:
-                    nuovo = pd.DataFrame([{"categoria": cat, "prodotto": nome, "prezzo": prez}])
-                    pd.concat([menu_df, nuovo]).to_csv(MENU_FILE, index=False); st.rerun()
+            prezzo = st.number_input("Prezzo €", min_value=0.0, step=0.1)
+            if st.form_submit_button("AGGIUNGI AL LISTINO"):
+                cat_f = cat_n if cat_n.strip() != "" else cat_e
+                if cat_f != "---" and nome:
+                    nuovo = pd.DataFrame([{"categoria": cat_f, "prodotto": nome, "prezzo": prezzo}])
+                    pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
+        
         st.divider()
+        st.write("### 📝 Elenco Prodotti (Modifica/Elimina)")
         for i, r in menu_df.iterrows():
             with st.expander(f"{r['categoria']} - {r['prodotto']} (€{r['prezzo']})"):
-                # 3. ELIMINAZIONE DEFINITIVA PRODOTTO
-                if st.button("🗑️ ELIMINA DEFINITIVAMENTE", key=f"ldel_{i}"):
+                # ELIMINA DEFINITIVAMENTE
+                if st.button("🗑️ ELIMINA DEFINITIVAMENTE", key=f"ldel_{i}", type="primary"):
                     menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else: # --- CLIENTE ---
@@ -141,15 +161,14 @@ else: # --- CLIENTE ---
                 st.session_state.tavolo = str(i); st.rerun()
     else:
         st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo}</div>", unsafe_allow_html=True)
-        # 4. TASTO CAMBIA TAVOLO
         if st.button("⬅️ CAMBIA TAVOLO", use_container_width=True): 
             st.session_state.tavolo = None
             st.rerun()
         
         stk = carica_stock()
         if not menu_df.empty:
-            cat_s = st.radio("Menu:", sorted(menu_df['categoria'].unique()), horizontal=True)
-            for i, r in menu_df[menu_df['categoria'] == cat_s].iterrows():
+            cat_scelta = st.radio("Scegli Sezione:", sorted(menu_df['categoria'].unique()), horizontal=True)
+            for i, r in menu_df[menu_df['categoria'] == cat_scelta].iterrows():
                 q = stk.get(r['prodotto'], None)
                 label = f"➕ {r['prodotto']} | €{r['prezzo']:.2f}" + (f" (Disp: {q})" if q is not None else "")
                 if st.button(label, key=f"c_{i}", use_container_width=True, disabled=(q is not None and q <= 0)):
@@ -157,7 +176,7 @@ else: # --- CLIENTE ---
                     st.toast(f"{r['prodotto']} aggiunto!")
 
         if st.session_state.carrello:
-            st.divider(); st.write("### 🛒 Carrello")
+            st.divider(); st.write("### 🛒 Il tuo Carrello:")
             for idx, c in enumerate(st.session_state.carrello):
                 col1, col2 = st.columns([4, 1])
                 col1.write(f"{c['prodotto']} - €{c['prezzo']:.2f}")
@@ -170,5 +189,4 @@ else: # --- CLIENTE ---
                         stk[c['prodotto']] = max(0, stk[c['prodotto']] - 1)
                         salva_stock(stk)
                     ords.append({"id_univoco": str(time.time())+c['prodotto'], "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO"})
-                salva_ordini(ords); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
-
+                salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato con successo!"); time.sleep(1); st.rerun()
