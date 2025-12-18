@@ -15,10 +15,8 @@ st.markdown("""
     div[data-testid="column"] button { width: 100% !important; font-weight: bold !important; border-radius: 12px !important; }
     .servito { color: #555555 !important; text-decoration: line-through; opacity: 0.6; font-style: italic; }
     .da-servire { color: #FFFFFF !important; font-weight: bold; font-size: 18px; }
-    .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px; }
+    .selected-tavolo { background-color: #FF4B4B; color: white; padding: 15px; border-radius: 15px; text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 10px; }
     .stButton>button[kind="secondary"] { background-color: #2E7D32 !important; color: white !important; font-size: 18px !important; font-weight: bold !important; }
-    /* Tasto X rosso per eliminazione */
-    .stButton>button.del-prod { background-color: #D32F2F !important; color: white !important; border: none !important; padding: 0px !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -89,33 +87,24 @@ if ruolo == "banco":
                     with st.container(border=True):
                         st.subheader(f"🪑 Tavolo {t}")
                         items_tavolo = [o for o in ordini if str(o['tavolo']) == str(t)]
-                        
-                        # Controllo se tutti sono serviti per abilitare il tasto PAGATO
                         tutti_serviti = all(o['stato'] == "SI" for o in items_tavolo)
                         tot_tavolo = sum(float(o['prezzo']) for o in items_tavolo)
                         
                         for r in items_tavolo:
                             c_del, c_t, c_b = st.columns([0.5, 3, 1])
-                            
-                            # Tasto per eliminare il singolo prodotto (ripensamento)
                             if c_del.button("❌", key=f"del_prod_{r['id_univoco']}"):
                                 ordini = [o for o in ordini if o['id_univoco'] != r['id_univoco']]
                                 salva_ordini(ordini); st.rerun()
-                                
                             cl = "servito" if r['stato'] == "SI" else "da-servire"
                             c_t.markdown(f"<span class='{cl}'>{r['prodotto']}</span>", unsafe_allow_html=True)
-                            
                             if r['stato'] == "NO" and c_b.button("Ok", key=f"sv_{r['id_univoco']}"):
                                 for o in ordini: 
                                     if o['id_univoco'] == r['id_univoco']: o['stato'] = "SI"
                                 salva_ordini(ordini); st.rerun()
-                        
                         st.divider()
-                        # Il tasto PAGATO si attiva solo se tutti_serviti è True
                         if st.button(f"PAGATO €{tot_tavolo:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_serviti):
                             salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)]); st.rerun()
 
-    # --- RESTO DEL CODICE (STOCK, LISTINO, CLIENTE) RIMANE INVARIATO ---
     with tab2:
         st.write("### ⚡ Vendita Rapida")
         stk = carica_stock()
@@ -137,28 +126,22 @@ if ruolo == "banco":
             if c4.button("➕", key=f"p_{p}"): aggiorna_stock_veloce(p, 1); st.rerun()
 
     with tab4:
-        # Gestione listino (Aggiunta/Modifica/Cancellazione)
+        st.subheader("🗑️ Cancella Categoria")
         lista_cats = sorted(menu_df['categoria'].unique())
-        st.subheader("⚙️ Gestione")
+        cat_del = st.selectbox("Scegli categoria", ["---"] + lista_cats)
+        if cat_del != "---" and st.button("ELIMINA"):
+            menu_df = menu_df[menu_df['categoria'] != cat_del]
+            menu_df.to_csv(MENU_FILE, index=False); st.rerun()
+        st.divider()
         with st.form("nuovo_p"):
             c1, c2 = st.columns(2)
-            ce = c1.selectbox("Categoria Esistente", ["---"] + lista_cats)
-            cn = c2.text_input("Nuova Categoria")
-            nome = st.text_input("Nome Prodotto")
-            prezzo = st.number_input("Prezzo €", min_value=0.0, step=0.1)
+            ce, cn = c1.selectbox("Esistente", ["---"] + lista_cats), c2.text_input("Nuova")
+            nome, prezzo = st.text_input("Nome"), st.number_input("€", step=0.1)
             if st.form_submit_button("AGGIUNGI"):
                 cat_f = cn if cn.strip() != "" else ce
                 if cat_f != "---" and nome:
                     nuovo = pd.DataFrame([{"categoria": cat_f, "prodotto": nome, "prezzo": prezzo}])
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
-        
-        for i, row in menu_df.iterrows():
-            with st.expander(f"{row['categoria']} - {row['prodotto']}"):
-                with st.form(f"mod_{i}"):
-                    nc, np, nr = st.text_input("Cat", row['categoria']), st.text_input("Prod", row['prodotto']), st.number_input("€", value=float(row['prezzo']))
-                    if st.form_submit_button("SALVA"):
-                        menu_df.at[i, 'categoria'], menu_df.at[i, 'prodotto'], menu_df.at[i, 'prezzo'] = nc, np, nr
-                        menu_df.to_csv(MENU_FILE, index=False); st.rerun()
 
 else:
     # --- CLIENTE ---
@@ -172,9 +155,15 @@ else:
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
                 st.session_state.tavolo = str(i); st.rerun()
     else:
+        # TASTO CAMBIA TAVOLO (RIPRISTINATO)
         st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo}</div>", unsafe_allow_html=True)
+        if st.button("⬅️ CAMBIA TAVOLO", use_container_width=True):
+            st.session_state.tavolo = None
+            st.rerun()
+            
+        st.divider()
         stk = carica_stock()
-        scelta_cat = st.radio("Scegli:", sorted(menu_df['categoria'].unique()), horizontal=True)
+        scelta_cat = st.radio("Scegli Sezione:", sorted(menu_df['categoria'].unique()), horizontal=True)
         prods = menu_df[menu_df['categoria'] == scelta_cat]
         
         for idx, (idx_r, r) in enumerate(prods.iterrows()):
