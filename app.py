@@ -4,11 +4,12 @@ import os
 import time
 from datetime import datetime
 import streamlit.components.v1 as components
-from streamlit_autorefresh import st_autorefresh # <-- NUOVO: per l'aggiornamento automatico
+from streamlit_autorefresh import st_autorefresh
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="BAR PAGANO", page_icon="logo.png", layout="wide")
+st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
 
+# CSS Personalizzato
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FFFFFF; }
@@ -21,7 +22,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNZIONE NOTIFICA SONORA ---
+# --- FUNZIONI DI SERVIZIO ---
 def suona_notifica():
     audio_html = """
         <audio autoplay style="display:none;">
@@ -29,6 +30,13 @@ def suona_notifica():
         </audio>
     """
     components.html(audio_html, height=0)
+
+def mostra_logo(larghezza=200):
+    """Mostra il logo se esiste, altrimenti mostra il titolo testuale"""
+    if os.path.exists("logo.png"):
+        st.image("logo.png", width=larghezza)
+    else:
+        st.title("☕ BAR PAGANO")
 
 # --- GESTIONE DATI ---
 DB_FILE = "ordini_bar_pagano.csv"
@@ -59,19 +67,18 @@ def carica_stock():
     return df.set_index('prodotto')['quantita'].to_dict()
 def salva_stock(d): pd.DataFrame(list(d.items()), columns=['prodotto', 'quantita']).to_csv(STOCK_FILE, index=False)
 
-# --- LOGICA RUOLI ---
+# --- LOGICA APPLICATIVA ---
 ruolo = st.query_params.get("ruolo", "tavolo")
 menu_df = carica_menu()
 
 if ruolo == "banco":
-    # --- AGGIORNAMENTO AUTOMATICO (Ogni 5 secondi) ---
-    st_autorefresh(interval=5000, key="ordini_refresh")
+    # Aggiornamento automatico ogni 5 secondi
+    st_autorefresh(interval=5000, key="banco_refresh")
     
+    st.image("logo.png", width=100) if os.path.exists("logo.png") else st.write("### 🖥️ CONSOLE")
     st.title("🖥️ CONSOLE BANCONE")
     
     ordini_attuali = carica_ordini()
-    
-    # Gestione notifica sonora se arrivano nuovi ordini
     if "ultimo_count" not in st.session_state:
         st.session_state.ultimo_count = len(ordini_attuali)
     
@@ -111,7 +118,7 @@ if ruolo == "banco":
                         if st.button(f"PAGATO €{tot_tavolo:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_ok):
                             salva_ordini([o for o in ordini_attuali if str(o['tavolo']) != str(t)]); st.rerun()
 
-    with tab2:
+    with tab2: # VENDITA RAPIDA
         stk = carica_stock()
         if not stk: st.warning("Configura lo stock per la vendita rapida.")
         else:
@@ -120,19 +127,17 @@ if ruolo == "banco":
                 if cols_v[i % 4].button(f"{p}\n({q})", key=f"vr_{p}", disabled=(q <= 0)):
                     stk[p] = max(0, q - 1); salva_stock(stk); st.rerun()
 
-    with tab3:
+    with tab3: # STOCK
         st.write("### 📦 Monitoraggio Magazzino")
         stk = carica_stock()
         if not menu_df.empty:
-            st.write("**Aggiungi prodotto al monitoraggio:**")
             c1, c2 = st.columns(2)
-            cat_stk = c1.selectbox("1. Scegli Categoria", sorted(menu_df['categoria'].unique()), key="cat_stock_sel")
+            cat_stk = c1.selectbox("1. Categoria", sorted(menu_df['categoria'].unique()))
             prod_filtrati = menu_df[menu_df['categoria'] == cat_stk]['prodotto'].unique()
-            nuovo_s = c2.selectbox("2. Scegli Prodotto", prod_filtrati, key="prod_stock_sel")
+            nuovo_s = c2.selectbox("2. Prodotto", prod_filtrati)
             if st.button("ABILITA MONITORAGGIO ✅", use_container_width=True):
                 if nuovo_s not in stk:
                     stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
-                else: st.warning("Prodotto già monitorato")
         st.divider()
         for p, q in stk.items():
             c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
@@ -142,10 +147,9 @@ if ruolo == "banco":
             if c4.button("➕", key=f"sp_{p}"): stk[p] = q+1; salva_stock(stk); st.rerun()
             if c5.button("🗑️", key=f"sdel_{p}"): del stk[p]; salva_stock(stk); st.rerun()
 
-    with tab4:
+    with tab4: # GESTIONE LISTINO
         st.subheader("⚙️ Gestione Listino")
         with st.form("add_list", clear_on_submit=True):
-            st.write("**Aggiungi nuovo prodotto**")
             c1, c2 = st.columns(2)
             esistenti = sorted(list(menu_df['categoria'].unique())) if not menu_df.empty else []
             cat_e = c1.selectbox("Categoria esistente", ["---"] + esistenti)
@@ -157,36 +161,18 @@ if ruolo == "banco":
                 if cat_f != "---" and nome_n:
                     nuovo = pd.DataFrame([{"categoria": cat_f, "prodotto": nome_n, "prezzo": prezzo_n}])
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
-        st.divider()
-        if not menu_df.empty:
-            for cat in sorted(menu_df['categoria'].unique()):
-                with st.expander(f"📂 {cat.upper()}", expanded=False):
-                    prod_cat = menu_df[menu_df['categoria'] == cat]
-                    for i, r in prod_cat.iterrows():
-                        with st.form(key=f"edit_{i}"):
-                            c_nome, c_prez, c_salva, c_del = st.columns([3, 1.5, 1, 1])
-                            nuovo_nome = c_nome.text_input("Nome", r['prodotto'], label_visibility="collapsed")
-                            nuovo_prezzo = c_prez.number_input("€", value=float(r['prezzo']), step=0.1, label_visibility="collapsed")
-                            if c_salva.form_submit_button("💾"):
-                                menu_df.at[i, 'prodotto'] = nuovo_nome
-                                menu_df.at[i, 'prezzo'] = nuovo_prezzo
-                                menu_df.to_csv(MENU_FILE, index=False); st.rerun()
-                            if c_del.form_submit_button("🗑️"):
-                                menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else: # --- CLIENTE ---
-    # Centra il logo usando le colonne
-    col_logo1, col_logo2, col_logo3 = st.columns([1, 2, 1])
-    with col_logo2:
-        # Sostituisci 'logo.png' con il nome del tuo file o un link URL
-        st.image("logo.png", use_container_width=True) 
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
+    # Mostra Logo centrato
+    c_l1, c_l2, c_l3 = st.columns([1, 2, 1])
+    with c_l2:
+        mostra_logo()
+
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
     
     if st.session_state.tavolo is None:
+        st.write("### Seleziona il tuo tavolo:")
         t_cols = st.columns(4)
         for i in range(1, 21):
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
@@ -207,7 +193,7 @@ else: # --- CLIENTE ---
                     st.toast(f"{r['prodotto']} aggiunto!")
 
         if st.session_state.carrello:
-            st.divider(); st.write("### 🛒 Il tuo Carrello:")
+            st.divider(); st.write("### 🛒 Carrello:")
             for idx, c in enumerate(st.session_state.carrello):
                 col1, col2 = st.columns([4, 1])
                 col1.write(f"{c['prodotto']} - €{c['prezzo']:.2f}")
@@ -229,5 +215,3 @@ else: # --- CLIENTE ---
                         "orario": ora_attuale
                     })
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
-
-
