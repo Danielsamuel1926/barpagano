@@ -33,12 +33,13 @@ def suona_notifica():
 DB_FILE = "ordini_bar_pagano.csv"
 STOCK_FILE = "stock_bar_pagano.csv"
 MENU_FILE = "menu_personalizzato.csv"
+COLONNE_ORDINI = ["id_univoco", "tavolo", "prodotto", "prezzo", "stato", "orario"]
 
 def inizializza_file(file, colonne):
     if not os.path.exists(file) or os.stat(file).st_size <= 2:
         pd.DataFrame(columns=colonne).to_csv(file, index=False)
 
-inizializza_file(DB_FILE, ["id_univoco", "tavolo", "prodotto", "prezzo", "stato", "orario"])
+inizializza_file(DB_FILE, COLONNE_ORDINI)
 inizializza_file(MENU_FILE, ["categoria", "prodotto", "prezzo"])
 inizializza_file(STOCK_FILE, ["prodotto", "quantita"])
 
@@ -48,7 +49,9 @@ def carica_ordini():
         df = pd.read_csv(DB_FILE)
         return df.sort_values(by="id_univoco").to_dict('records')
     except: return []
-def salva_ordini(lista): pd.DataFrame(lista).to_csv(DB_FILE, index=False)
+def salva_ordini(lista): 
+    df = pd.DataFrame(lista if lista else [], columns=COLONNE_ORDINI)
+    df.to_csv(DB_FILE, index=False)
 def carica_stock(): 
     df = pd.read_csv(STOCK_FILE)
     if df.empty: return {}
@@ -76,7 +79,7 @@ if ruolo == "banco":
 
     tab1, tab2, tab3, tab4 = st.tabs(["📋 ORDINI", "⚡ VENDITA RAPIDA", "📦 STOCK", "⚙️ GESTIONE LISTINO"])
     
-    with tab1: # ORDINI CRONOLOGICI
+    with tab1:
         if not ordini_attuali: st.info("In attesa di nuovi ordini...")
         else:
             tavoli = []
@@ -92,6 +95,7 @@ if ruolo == "banco":
                     with st.container(border=True):
                         st.subheader(f"🪑 Tavolo {t}")
                         items = [o for o in ordini_attuali if str(o['tavolo']) == str(t)]
+                        tot_tavolo = 0.0
                         for r in items:
                             cx, ct, cok = st.columns([0.6, 3, 1])
                             if cx.button("❌", key=f"del_o_{r['id_univoco']}"):
@@ -100,17 +104,17 @@ if ruolo == "banco":
                             cl = "servito" if r['stato'] == "SI" else "da-servire"
                             ora_label = f"[{r['orario']}] " if 'orario' in r else ""
                             ct.markdown(f"<span class='{cl}'>{ora_label}{r['prodotto']}</span>", unsafe_allow_html=True)
+                            tot_tavolo += float(r['prezzo'])
                             if r['stato'] == "NO" and cok.button("Ok", key=f"ok_{r['id_univoco']}"):
                                 for o in ordini_attuali: 
                                     if o['id_univoco'] == r['id_univoco']: o['stato'] = "SI"
                                 salva_ordini(ordini_attuali); st.rerun()
                         st.divider()
                         tutti_ok = all(o['stato'] == "SI" for o in items)
-                        tot = sum(float(o['prezzo']) for o in items)
-                        if st.button(f"PAGATO €{tot:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_ok):
+                        if st.button(f"PAGATO €{tot_tavolo:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_ok):
                             salva_ordini([o for o in ordini_attuali if str(o['tavolo']) != str(t)]); st.rerun()
 
-    with tab2: # VENDITA RAPIDA
+    with tab2:
         stk = carica_stock()
         if not stk: st.warning("Configura lo stock per la vendita rapida.")
         else:
@@ -122,22 +126,17 @@ if ruolo == "banco":
     with tab3: # STOCK CON SELEZIONE PER CATEGORIA
         st.write("### 📦 Monitoraggio Magazzino")
         stk = carica_stock()
-        
-        # Modifica: Selezione prodotto dal listino divisa per categoria
         if not menu_df.empty:
             st.write("**Aggiungi prodotto al monitoraggio:**")
             c1, c2 = st.columns(2)
             cat_stk = c1.selectbox("1. Scegli Categoria", sorted(menu_df['categoria'].unique()), key="cat_stock_sel")
             prod_filtrati = menu_df[menu_df['categoria'] == cat_stk]['prodotto'].unique()
             nuovo_s = c2.selectbox("2. Scegli Prodotto", prod_filtrati, key="prod_stock_sel")
-            
             if st.button("ABILITA MONITORAGGIO ✅", use_container_width=True):
                 if nuovo_s not in stk:
                     stk[nuovo_s] = 0; salva_stock(stk); st.rerun()
                 else: st.warning("Prodotto già monitorato")
-        
         st.divider()
-        st.write("**Prodotti in esaurimento/monitorati:**")
         for p, q in stk.items():
             c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
             c1.write(f"**{p}**")
@@ -161,7 +160,6 @@ if ruolo == "banco":
                 if cat_f != "---" and nome_n:
                     nuovo = pd.DataFrame([{"categoria": cat_f, "prodotto": nome_n, "prezzo": prezzo_n}])
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
-
         st.divider()
         if not menu_df.empty:
             for cat in sorted(menu_df['categoria'].unique()):
