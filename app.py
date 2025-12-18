@@ -7,7 +7,7 @@ import streamlit.components.v1 as components
 from streamlit_autorefresh import st_autorefresh # <-- NUOVO: per l'aggiornamento automatico
 
 # --- CONFIGURAZIONE ---
-st.set_page_config(page_title="BAR PAGANO", page_icon="☕", layout="wide")
+st.set_page_config(page_title="BAR PAGANO", page_icon="logo.png", layout="wide")
 
 st.markdown("""
     <style>
@@ -229,4 +229,5 @@ else: # --- CLIENTE ---
                         "orario": ora_attuale
                     })
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
 
