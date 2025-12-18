@@ -122,7 +122,7 @@ if ruolo == "banco":
         for i, (idx, r) in enumerate(brioche_view.iterrows()):
             c1, c2, c3 = st.columns([3, 2, 2])
             c1.write(f"**{r['prodotto']}** (Stock: {r['quantita']})")
-            if c2.button("➕ +10", key=f"a_{idx}"):
+            if c2.button("➕ +1", key=f"a_{idx}"):
                 stock_df.at[idx, 'quantita'] += 10
                 stock_df.to_csv(STOCK_FILE, index=False); st.rerun()
             if c3.button(f"VENDI €{r['prezzo']}", key=f"v_{idx}", disabled=r['quantita'] <= 0):
@@ -187,3 +187,4 @@ else:
                 for c in st.session_state.carrello:
                     ord_db.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "orario": datetime.now().strftime("%H:%M"), "stato": "NO"})
                 salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
+
