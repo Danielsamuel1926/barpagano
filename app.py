@@ -105,43 +105,35 @@ if ruolo == "banco":
                         if st.button(f"PAGATO €{tot_tavolo:.2f}", key=f"pay_{t}", type="primary", use_container_width=True, disabled=not tutti_serviti):
                             salva_ordini([o for o in ordini if str(o['tavolo']) != str(t)]); st.rerun()
 
-    with tab2:
-        st.write("### ⚡ Vendita Rapida")
-        stk = carica_stock()
-        brioche_prods = menu_df[menu_df['categoria'].str.contains('Brioche|Cornetti', case=False, na=False)]
-        cols_v = st.columns(4)
-        for i, (idx_r, r) in enumerate(brioche_prods.iterrows()):
-            q = stk.get(r['prodotto'], 0)
-            if cols_v[i % 4].button(f"{r['prodotto']} ({q})", key=f"bs_{idx_r}", disabled=(q <= 0)):
-                aggiorna_stock_veloce(r['prodotto'], -1); st.rerun()
-
-    with tab3:
-        st.write("### 📦 Carico Magazzino")
-        stk = carica_stock()
-        for p, q in stk.items():
-            c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-            c1.write(f"**{p}**")
-            if c2.button("➖", key=f"m_{p}"): aggiorna_stock_veloce(p, -1); st.rerun()
-            c3.write(f"**{q}**")
-            if c4.button("➕", key=f"p_{p}"): aggiorna_stock_veloce(p, 1); st.rerun()
-
     with tab4:
-        st.subheader("🗑️ Cancella Categoria")
+        st.subheader("⚙️ Gestione Listino")
         lista_cats = sorted(menu_df['categoria'].unique())
-        cat_del = st.selectbox("Scegli categoria", ["---"] + lista_cats)
-        if cat_del != "---" and st.button("ELIMINA"):
-            menu_df = menu_df[menu_df['categoria'] != cat_del]
-            menu_df.to_csv(MENU_FILE, index=False); st.rerun()
-        st.divider()
+        
         with st.form("nuovo_p"):
             c1, c2 = st.columns(2)
-            ce, cn = c1.selectbox("Esistente", ["---"] + lista_cats), c2.text_input("Nuova")
-            nome, prezzo = st.text_input("Nome"), st.number_input("€", step=0.1)
-            if st.form_submit_button("AGGIUNGI"):
+            ce, cn = c1.selectbox("Categoria Esistente", ["---"] + lista_cats), c2.text_input("Nuova Categoria")
+            nome, prezzo = st.text_input("Nome Prodotto"), st.number_input("Prezzo €", step=0.1)
+            if st.form_submit_button("AGGIUNGI AL LISTINO"):
                 cat_f = cn if cn.strip() != "" else ce
                 if cat_f != "---" and nome:
                     nuovo = pd.DataFrame([{"categoria": cat_f, "prodotto": nome, "prezzo": prezzo}])
                     pd.concat([menu_df, nuovo], ignore_index=True).to_csv(MENU_FILE, index=False); st.rerun()
+
+        st.divider()
+        st.subheader("📝 Modifica / Elimina Prodotti")
+        for i, row in menu_df.iterrows():
+            with st.expander(f"{row['categoria']} - {row['prodotto']}"):
+                with st.form(f"mod_{i}"):
+                    nc = st.text_input("Categoria", row['categoria'])
+                    np = st.text_input("Prodotto", row['prodotto'])
+                    nr = st.number_input("Prezzo", value=float(row['prezzo']))
+                    c1, c2 = st.columns(2)
+                    if c1.form_submit_button("SALVA MODIFICHE"):
+                        menu_df.at[i, 'categoria'], menu_df.at[i, 'prodotto'], menu_df.at[i, 'prezzo'] = nc, np, nr
+                        menu_df.to_csv(MENU_FILE, index=False); st.rerun()
+                    if c2.form_submit_button("🗑️ ELIMINA DEFINITIVAMENTE"):
+                        menu_df = menu_df.drop(i)
+                        menu_df.to_csv(MENU_FILE, index=False); st.rerun()
 
 else:
     # --- CLIENTE ---
@@ -155,38 +147,32 @@ else:
             if t_cols[(i-1) % 4].button(f"{i}", key=f"t_{i}", use_container_width=True):
                 st.session_state.tavolo = str(i); st.rerun()
     else:
-        # TASTO CAMBIA TAVOLO (RIPRISTINATO)
         st.markdown(f"<div class='selected-tavolo'>TAVOLO {st.session_state.tavolo}</div>", unsafe_allow_html=True)
         if st.button("⬅️ CAMBIA TAVOLO", use_container_width=True):
             st.session_state.tavolo = None
             st.rerun()
-            
         st.divider()
         stk = carica_stock()
-        scelta_cat = st.radio("Scegli Sezione:", sorted(menu_df['categoria'].unique()), horizontal=True)
+        scelta_cat = st.radio("Sezioni:", sorted(menu_df['categoria'].unique()), horizontal=True)
         prods = menu_df[menu_df['categoria'] == scelta_cat]
-        
         for idx, (idx_r, r) in enumerate(prods.iterrows()):
             q = stk.get(r['prodotto'], None)
             disp = f" (Disp: {q})" if q is not None else ""
             if st.button(f"➕ {r['prodotto']}{disp} | €{r['prezzo']:.2f}", key=f"cl_{idx_r}", use_container_width=True, disabled=(q is not None and q <= 0)):
-                item = r.to_dict()
-                item['temp_id'] = time.time() + idx
+                item = r.to_dict(); item['temp_id'] = time.time() + idx
                 st.session_state.carrello.append(item); st.toast("Aggiunto!")
         
         if st.session_state.carrello:
             st.divider(); st.write("### 🛒 Carrello:")
             for i, item in enumerate(st.session_state.carrello):
                 c1, c2, c3 = st.columns([4, 2, 1])
-                c1.write(item['prodotto'])
-                c2.write(f"€{item['prezzo']:.2f}")
+                c1.write(item['prodotto']); c2.write(f"€{item['prezzo']:.2f}")
                 if c3.button("❌", key=f"del_car_{item['temp_id']}"): st.session_state.carrello.pop(i); st.rerun()
-            
             if st.button(f"🚀 INVIA ORDINE €{sum(c['prezzo'] for c in st.session_state.carrello):.2f}", type="primary", use_container_width=True):
-                suona_notifica()
-                ord_db = carica_ordini()
+                suona_notifica(); ord_db = carica_ordini()
                 for c in st.session_state.carrello:
                     if c['prodotto'] in stk: aggiorna_stock_veloce(c['prodotto'], -1)
                     ord_db.append({"id_univoco": str(time.time())+c['prodotto'], "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "nota": "", "orario": datetime.now().strftime("%H:%M"), "stato": "NO"})
                 salva_ordini(ord_db); st.session_state.carrello = []; st.success("Inviato!"); time.sleep(1); st.rerun()
+
 
