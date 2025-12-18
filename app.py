@@ -63,12 +63,15 @@ ruolo = st.query_params.get("ruolo", "tavolo")
 menu_df = carica_menu()
 
 if ruolo == "banco":
-    # Aggiornamento automatico ogni 5 secondi per vedere gli ordini in tempo reale
     st_autorefresh(interval=5000, key="banco_refresh")
     
+    # Nella console bancone lo teniamo in un angolo per non rubare spazio agli ordini
     col_tit1, col_tit2 = st.columns([1, 5])
-    with col_tit1: mostra_logo(larghezza=100)
-    with col_tit2: st.title("CONSOLE BANCONE")
+    with col_tit1:
+        if os.path.exists("logo.png"):
+            st.image("logo.png", use_container_width=True)
+    with col_tit2:
+        st.title("CONSOLE BANCONE")
     
     ordini_attuali = carica_ordini()
     if "ultimo_count" not in st.session_state: st.session_state.ultimo_count = len(ordini_attuali)
@@ -161,8 +164,11 @@ if ruolo == "banco":
                                 menu_df.drop(i).to_csv(MENU_FILE, index=False); st.rerun()
 
 else: # --- INTERFACCIA CLIENTE ---
-    c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1])
-    with c_logo2: mostra_logo()
+    # Creiamo 3 colonne: le due laterali "stringono" il logo su PC, 
+    # ma su cellulare Streamlit le impila o le adatta automaticamente.
+    c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1]) 
+    with c_logo2:
+        mostra_logo()
 
     if 'tavolo' not in st.session_state: st.session_state.tavolo = None
     if 'carrello' not in st.session_state: st.session_state.carrello = []
@@ -204,4 +210,5 @@ else: # --- INTERFACCIA CLIENTE ---
                         salva_stock(stk)
                     ords.append({"id_univoco": f"{time.time()}_{c['prodotto']}", "tavolo": st.session_state.tavolo, "prodotto": c['prodotto'], "prezzo": c['prezzo'], "stato": "NO", "orario": ora})
                 salva_ordini(ords); st.session_state.carrello = []; st.success("Ordine inviato!"); time.sleep(1); st.rerun()
+
 
